@@ -18,7 +18,16 @@ export type NeedleRowProps = {
   onPress?: () => void;
 };
 
-/** A needle or hook: free (brass swatch) or tied up in a project (sunk swatch). */
+/**
+ * A needle or hook: free, or tied up in a project.
+ *
+ * Free is not one of the three states, so the swatch does not take a colour to
+ * say so. It stays on the raised surface at full ink; a needle that is spoken
+ * for sinks into the paper and drops to `ink2`. Free reads as the brighter of
+ * the two, which is the right way round — a free needle is the one you can pick
+ * up — but the distance between them is small, and the badge underneath is what
+ * actually names the commitment.
+ */
 export function NeedleRow({
   size,
   us,
@@ -38,14 +47,14 @@ export function NeedleRow({
       style={({ pressed }) => [
         styles.row,
         { borderBottomColor: colors.hairline },
-        pressed && onPress ? { backgroundColor: colors.brassTint } : null,
+        pressed && onPress ? { backgroundColor: colors.surfaceSunk } : null,
       ]}
     >
       <View
         style={[
           styles.swatch,
           {
-            backgroundColor: free ? colors.brassTint : colors.surfaceSunk,
+            backgroundColor: free ? colors.surface : colors.surfaceSunk,
             borderColor: colors.hairline,
           },
         ]}
@@ -53,20 +62,20 @@ export function NeedleRow({
         <Text
           style={[
             styles.swatchSize,
-            { color: free ? colors.brass : colors.ink3 },
+            { color: free ? colors.ink : colors.ink2 },
           ]}
         >
           {size}
         </Text>
         {/* Sentence case: the design's "MM" would break the never-all-caps rule. */}
-        <Text style={[styles.swatchUnit, { color: colors.ink3 }]}>mm</Text>
+        <Text style={[styles.swatchUnit, { color: colors.ink2 }]}>mm</Text>
       </View>
 
       <View style={styles.body}>
         <Text numberOfLines={1} style={[styles.kind, { color: colors.ink }]}>
           {kind}
           {us ? (
-            <Text style={[styles.us, { color: colors.ink3 }]}> · US {us}</Text>
+            <Text style={[styles.us, { color: colors.ink2 }]}> · US {us}</Text>
           ) : null}
         </Text>
         {tiedUpIn ? <Badge tone="committed">in {tiedUpIn}</Badge> : null}

@@ -7,15 +7,18 @@ export type ScreenHeaderProps = {
   title: string;
   /** Stamped count beside the title, e.g. "6 active". */
   count?: string | number;
-  /** The one text action for the screen, right-aligned in brass. */
+  /** The one text action for the screen, right-aligned and set in the link colour. */
   action?: string;
   onAction?: () => void;
 };
 
 /**
  * The one place per screen where the brand voice speaks: a serif title, a
- * stamped count, one brass action, a hairline underneath. There is deliberately
+ * stamped count, one text action, a hairline underneath. There is deliberately
  * no sub-line — the design contract does not have the prop.
+ *
+ * The action is words and nothing else, so it is coloured as a link rather than
+ * drawn as a filled control; the filled one belongs to the content below.
  */
 export function ScreenHeader({ title, count, action, onAction }: ScreenHeaderProps) {
   const { colors } = useTheme();
@@ -31,7 +34,7 @@ export function ScreenHeader({ title, count, action, onAction }: ScreenHeaderPro
           {title}
         </Text>
         {count !== undefined && count !== null ? (
-          <Text style={[styles.count, { color: colors.ink3 }]}>{count}</Text>
+          <Text style={[styles.count, { color: colors.ink2 }]}>{count}</Text>
         ) : null}
       </View>
 
@@ -43,7 +46,7 @@ export function ScreenHeader({ title, count, action, onAction }: ScreenHeaderPro
           style={styles.action}>
           {({ pressed }) => (
             <Text
-              style={[styles.actionLabel, { color: pressed ? colors.brassPressed : colors.brass }]}>
+              style={[styles.actionLabel, { color: pressed ? colors.linkPressed : colors.link }]}>
               {action}
             </Text>
           )}

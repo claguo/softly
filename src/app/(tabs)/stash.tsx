@@ -12,7 +12,7 @@
  */
 
 import { router } from "expo-router";
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useEffect, useMemo } from "react";
 import {
   Pressable,
   RefreshControl,
@@ -31,6 +31,7 @@ import { ScreenHeader } from "@/components/screen-header";
 import { NeedleRow } from "@/components/ui/needle-row";
 import { YarnCard } from "@/components/ui/yarn-card";
 import {
+  fillStashPhotos,
   syncAll,
   tintFor,
   useNeedles,
@@ -127,7 +128,7 @@ const NeedleItem = memo(function NeedleItem({ row }: { row: NeedleListRow }) {
 const EmptyLine = memo(function EmptyLine({ line }: { line: string }) {
   const { colors } = useTheme();
 
-  return <Text style={[styles.emptyLine, { color: colors.ink3 }]}>{line}</Text>;
+  return <Text style={[styles.emptyLine, { color: colors.ink2 }]}>{line}</Text>;
 });
 
 const renderStashItem = ({ item }: { item: StashItem }) => {
@@ -199,6 +200,17 @@ export default function StashScreen() {
     ];
   }, [addNeedle, addYarn, needles, signedIn, yarn]);
 
+  // The thumbnails and the fibre content are fetched a yarn at a time and kept
+  // (see `yarn-photos.ts`). Asking here rather than only after a sync is what
+  // makes them turn up on the screen they are actually for — including on the
+  // launch after that cache grew a column and was emptied to refill itself.
+  // Idempotent and free when there is nothing missing: one query, no network.
+  useEffect(() => {
+    if (signedIn) {
+      void fillStashPhotos();
+    }
+  }, [signedIn, yarn]);
+
   const onRefresh = useCallback(() => {
     if (username !== null) {
       void syncAll(username);
@@ -208,11 +220,11 @@ export default function StashScreen() {
   const renderSectionHeader = useCallback(
     ({ section }: { section: StashSection }) => (
       <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionLabel, { color: colors.ink3 }]}>
+        <Text style={[styles.sectionLabel, { color: colors.ink2 }]}>
           {section.title}
         </Text>
-        {/* Brass, and stamped at the same micro size as the label it sits
-            across from: this is the screen header's one text action, said
+        {/* Link-colored, and stamped at the same micro size as the label it
+            sits across from: this is the screen header's one text action, said
             again per section, because each section adds a different thing. */}
         <Pressable
           accessibilityRole="button"
@@ -225,7 +237,7 @@ export default function StashScreen() {
             <Text
               style={[
                 styles.sectionActionLabel,
-                { color: pressed ? colors.brassPressed : colors.brass },
+                { color: pressed ? colors.linkPressed : colors.link },
               ]}
             >
               Add
@@ -234,7 +246,7 @@ export default function StashScreen() {
         </Pressable>
       </View>
     ),
-    [colors.brass, colors.brassPressed, colors.ink3],
+    [colors.link, colors.linkPressed, colors.ink2],
   );
 
   return (
@@ -261,7 +273,7 @@ export default function StashScreen() {
             <RefreshControl
               refreshing={sync.phase === "syncing"}
               onRefresh={onRefresh}
-              tintColor={colors.ink3}
+              tintColor={colors.ink2}
             />
           )
         }

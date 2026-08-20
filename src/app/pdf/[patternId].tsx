@@ -7,11 +7,13 @@
  * instead of a blank page.
  *
  * Two platforms, two answers. iOS renders a PDF in a `WebView` natively, so
- * that is the whole screen — chrome is one back bar and the pattern's name,
- * and everything below it is the document. Android's WebView cannot render a
- * PDF at all; rather than show a blank page or ship a JavaScript renderer, it
- * hands the file to whatever app the knitter already reads PDFs in. That is
- * the minimum honest thing, and it is deliberately all this screen does there.
+ * that is the whole screen — the document runs top to bottom and the only
+ * chrome left is the way out of it, floating clear of the page: the knitter
+ * came here to read the pattern, not to be told again which one they opened.
+ * Android's WebView cannot render a PDF at all; rather than show a blank page
+ * or ship a JavaScript renderer, it hands the file to whatever app the knitter
+ * already reads PDFs in. That is the minimum honest thing, and it is
+ * deliberately all this screen does there.
  *
  * The `WebView` is told it may read the PDF directory and nothing else, and
  * only `file://` counts as somewhere it may go: a link inside a pattern opens
@@ -19,17 +21,46 @@
  */
 
 import * as Sharing from "expo-sharing";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
-import { BackBar } from "@/components/back-bar";
 import { Button } from "@/components/ui/app-button";
 import { getPatternPdf, patternPdfDirectoryUri } from "@/data";
 import { readId, readParam } from "@/features/detail/raw";
-import { fonts, space, trackMicro, type, useTheme } from "@/theme";
+import { fonts, space, tap, trackMicro, type, useTheme } from "@/theme";
+
+/**
+ * The way back, with no bar under it.
+ *
+ * `BackBar`'s control exactly — same stamped label, same ink, same honest 48pt
+ * box — lifted out of the bar and left in the corner. A bar here would spend a
+ * strip of the screen repeating a name the knitter tapped a moment ago, so the
+ * document takes the whole height instead and this floats over its first page.
+ * Nothing is painted behind it either: the top of a page is the designer's
+ * margin, and a fill or a scrim would only put the bar back a shade at a time.
+ */
+function FloatingBack() {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Back"
+      onPress={() => router.back()}
+      style={[styles.back, { top: insets.top }]}
+    >
+      {({ pressed }) => (
+        <Text style={[styles.backLabel, { color: pressed ? colors.ink : colors.ink2 }]}>
+          ‹ Back
+        </Text>
+      )}
+    </Pressable>
+  );
+}
 
 export default function PatternPdfScreen() {
   const { colors } = useTheme();
@@ -79,26 +110,20 @@ export default function PatternPdfScreen() {
       edges={["top"]}
       style={[styles.screen, { backgroundColor: colors.paper }]}
     >
-      <BackBar />
-
-      <View style={[styles.title, { borderBottomColor: colors.hairline }]}>
-        <Text numberOfLines={1} style={[styles.name, { color: colors.ink }]}>
-          {title}
-        </Text>
-      </View>
-
       {pdf === null ? (
-        <Text style={[styles.stamp, { color: colors.ink3 }]}>
-          Pattern not downloaded.
-        </Text>
+        <View style={styles.missing}>
+          <Text style={[styles.stamp, { color: colors.ink2 }]}>
+            Pattern not downloaded.
+          </Text>
+        </View>
       ) : Platform.OS === "android" ? (
         <View style={styles.handoff}>
-          <Text style={[styles.stamp, { color: colors.ink3 }]}>
+          <Text style={[styles.stamp, { color: colors.ink2 }]}>
             Saved on this phone.
           </Text>
 
           {problem === null ? null : (
-            <Text style={[styles.stamp, { color: colors.clay }]}>{problem}</Text>
+            <Text style={[styles.stamp, { color: colors.mustard }]}>{problem}</Text>
           )}
 
           <Button
@@ -120,25 +145,50 @@ export default function PatternPdfScreen() {
           style={[styles.document, { backgroundColor: colors.paper }]}
         />
       )}
+
+      {/* Last, so it lands on top of the document rather than under it. */}
+      <FloatingBack />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  title: {
-    paddingHorizontal: space.s4,
-    paddingVertical: space.s3,
-    borderBottomWidth: 1,
-  },
-  name: {
-    // Display, but at the bottom of its range: the document under it is what
-    // the screen is for, and this is a label on the way in.
-    fontFamily: fonts.display,
-    fontSize: 20,
-    lineHeight: 26,
-  },
   document: { flex: 1 },
+  back: {
+    // Against the top-left of the safe area, out of the flow, so the document
+    // keeps the full height and its first page runs on underneath — and being
+    // out of the flow is why `top` is measured onto this element by hand
+    // instead of left at 0: the container's padding insets the children still
+    // in the flow, and this is not one of them, so 0 here is the window's edge
+    // and the clock. `BackBar`'s 48pt box comes along: padded left to the
+    // screen edge so the corner itself is tappable, and past the label on the
+    // right, which is the side the thumb arrives from.
+    position: "absolute",
+    left: 0,
+    minHeight: tap.min,
+    justifyContent: "center",
+    paddingLeft: space.s4,
+    paddingRight: space.s3,
+  },
+  backLabel: {
+    // Stamped, like every other label in the chrome; floating changes where it
+    // sits, not what it is.
+    fontFamily: fonts.ui,
+    fontSize: type.micro.fontSize,
+    lineHeight: type.micro.lineHeight,
+    letterSpacing: trackMicro,
+  },
+  missing: {
+    // A bar used to hold this line down off the top of the screen. With the
+    // chrome floating there is nothing above it, so the line centres itself on
+    // the empty screen the way the handoff does — and well clear of the corner
+    // the way back is sitting in.
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: space.s4,
+  },
   handoff: {
     flex: 1,
     alignItems: "center",

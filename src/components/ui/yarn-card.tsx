@@ -51,7 +51,7 @@ export function YarnCard({
       style={({ pressed }) => [
         styles.card,
         { borderColor: colors.hairline },
-        pressed && onPress ? { backgroundColor: colors.brassTint } : null,
+        pressed && onPress ? { backgroundColor: colors.surfaceSunk } : null,
       ]}
     >
       <PhotoFrame src={photo} tint={tint} label="yarn" width={72} aspect="1/1" />
@@ -66,7 +66,7 @@ export function YarnCard({
         {brand ? (
           <Text
             numberOfLines={1}
-            style={[styles.brand, { color: colors.ink3 }]}
+            style={[styles.brand, { color: colors.ink2 }]}
           >
             {brand}
           </Text>
@@ -85,7 +85,7 @@ export function YarnCard({
         {committedTo ? (
           <Text
             numberOfLines={1}
-            style={[styles.committed, { color: colors.ink3 }]}
+            style={[styles.committed, { color: colors.ink2 }]}
           >
             in {committedTo}
           </Text>

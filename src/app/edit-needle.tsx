@@ -2,7 +2,7 @@
  * Edit a needle — `add-needle` with the boxes already full.
  *
  * The same three facts, the same size grid off Ravelry's own table, the same
- * one brass button at the bottom. Two things are its own:
+ * one action button at the bottom. Two things are its own:
  *
  * - **It only ever opens on a needle this app wrote.** The needle detail screen
  *   offers Edit on nothing else, and `updateLocalNeedle` refuses anything else
@@ -197,10 +197,10 @@ export default function EditNeedleScreen() {
         },
       ]}
     >
-      <BackBar />
+      <BackBar title="Edit needle" />
 
       {!editable ? (
-        <Text style={[styles.stamp, { color: colors.ink3 }]}>
+        <Text style={[styles.stamp, { color: colors.ink2 }]}>
           {row === null
             ? "Needle unavailable."
             : "This needle came from Ravelry and can't be edited."}
@@ -215,20 +215,16 @@ export default function EditNeedleScreen() {
             keyboardDismissMode="on-drag"
             contentContainerStyle={styles.content}
           >
-            <View style={styles.block}>
-              <Text style={[styles.title, { color: colors.ink }]}>
-                Edit needle
-              </Text>
-            </View>
-
-            <View style={[styles.ruled, { borderTopColor: colors.hairline }]}>
-              <View style={styles.opening}>
-                <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>
+            {/* No gap on this block: the grid pads itself off the label above
+                it, and it is the same 12 the rail below takes from `stack`. */}
+            <View>
+              <View style={styles.field}>
+                <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>
                   Size
                 </Text>
               </View>
-              {/* The grid closes the section with its own hairline. */}
               <SizeGrid
+                unruled
                 options={sizes}
                 selected={chosen === null ? NOTHING : [chosen.key]}
                 notice={{
@@ -241,9 +237,9 @@ export default function EditNeedleScreen() {
               />
             </View>
 
-            <View style={[styles.stack, { borderBottomColor: colors.hairline }]}>
+            <View style={styles.stack}>
               <View style={styles.field}>
-                <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>
+                <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>
                   Type
                 </Text>
               </View>
@@ -265,8 +261,8 @@ export default function EditNeedleScreen() {
               </ScrollView>
             </View>
 
-            <View style={[styles.panel, { borderBottomColor: colors.hairline }]}>
-              <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>
+            <View style={styles.field}>
+              <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>
                 Length
               </Text>
               <TextField
@@ -290,14 +286,14 @@ export default function EditNeedleScreen() {
             ]}
           >
             {saving ? (
-              <Text style={[styles.stamp, { color: colors.ink3 }]}>Saving…</Text>
+              <Text style={[styles.stamp, { color: colors.ink2 }]}>Saving…</Text>
             ) : failed ? (
-              <Text style={[styles.stamp, { color: colors.clay }]}>
+              <Text style={[styles.stamp, { color: colors.mustard }]}>
                 Couldn&apos;t save the needle.
               </Text>
             ) : null}
 
-            {/* The one brass thing on this screen. */}
+            {/* The one action on this screen. */}
             <Button
               variant="primary"
               size="lg"
@@ -351,17 +347,13 @@ function readTypes(records: readonly unknown[]): NeedleTypeName[] {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { paddingBottom: space.s6 },
-  block: {
-    paddingHorizontal: space.s4,
-    paddingVertical: space.s5,
-    gap: space.s2,
-  },
-  ruled: { borderTopWidth: 1 },
-  title: {
-    fontFamily: fonts.display,
-    fontSize: 28,
-    lineHeight: 32,
+  content: {
+    // Space where the rules were, and the same measurements as the sheet next
+    // door down to the last one: this is that form with the boxes already full,
+    // and the two of them opening differently would say they were not.
+    gap: space.s8,
+    paddingTop: space.s3,
+    paddingBottom: space.s6,
   },
   fieldLabel: {
     fontFamily: fonts.ui,
@@ -369,26 +361,14 @@ const styles = StyleSheet.create({
     lineHeight: type.micro.lineHeight,
     letterSpacing: trackMicro,
   },
-  opening: {
-    paddingHorizontal: space.s4,
-    paddingTop: space.s3,
-    gap: space.s2,
-  },
-  panel: {
-    paddingHorizontal: space.s4,
-    paddingVertical: space.s3,
-    gap: space.s2,
-    borderBottomWidth: 1,
-  },
-  stack: {
-    paddingVertical: space.s3,
-    gap: space.s3,
-    borderBottomWidth: 1,
-  },
+  // One thing the sheet asks for: its label and the control under it.
   field: {
     paddingHorizontal: space.s4,
     gap: space.s2,
   },
+  // Like `field`, but for the block whose rail has to reach both edges, so the
+  // inset moves off the block and onto the label inside it.
+  stack: { gap: space.s3 },
   rail: {
     paddingLeft: space.s4 + 1,
     paddingRight: space.s4,

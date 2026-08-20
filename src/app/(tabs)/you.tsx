@@ -50,7 +50,7 @@ export default function YouScreen() {
       />
 
       <ScrollView contentContainerStyle={styles.content}>
-        {status === 'loading' ? <ActivityIndicator color={colors.ink3} /> : null}
+        {status === 'loading' ? <ActivityIndicator color={colors.ink2} /> : null}
 
         {status === 'signedOut' ? (
           <View style={styles.block}>
@@ -66,19 +66,19 @@ export default function YouScreen() {
               onPress={handleSignIn}
               style={({ pressed }) => [
                 styles.button,
-                { backgroundColor: pressed ? colors.brassPressed : colors.brass },
+                { backgroundColor: pressed ? colors.actionPressed : colors.action },
               ]}>
-              <Text style={[styles.buttonLabel, { color: colors.onBrass }]}>
+              <Text style={[styles.buttonLabel, { color: colors.onAction }]}>
                 Sign in with Ravelry
               </Text>
             </Pressable>
 
             {failed ? (
-              <Text style={[styles.stamp, { color: colors.clay }]}>Sign-in didn&apos;t complete.</Text>
+              <Text style={[styles.stamp, { color: colors.mustard }]}>Sign-in didn&apos;t complete.</Text>
             ) : null}
 
-            <Text style={[styles.stamp, { color: colors.ink3 }]}>
-              Soft Goods is an independent app, not made by Ravelry.
+            <Text style={[styles.stamp, { color: colors.ink2 }]}>
+              Softly is an independent app, not made by Ravelry.
             </Text>
           </View>
         ) : null}
@@ -105,7 +105,7 @@ export default function YouScreen() {
             )}
 
             <Text style={[styles.username, { color: colors.ink }]}>{displayName}</Text>
-            <Text style={[styles.stamp, { color: colors.ink3 }]}>Signed in with Ravelry</Text>
+            <Text style={[styles.stamp, { color: colors.ink2 }]}>Signed in with Ravelry</Text>
           </View>
         ) : null}
       </ScrollView>

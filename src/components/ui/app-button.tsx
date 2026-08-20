@@ -9,7 +9,7 @@ export type ButtonSize = 'sm' | 'md' | 'lg';
 export type ButtonProps = {
   /** The label. Sentence case, as short as it can be said. */
   children?: ReactNode;
-  /** primary = brass hardware, and there is only one brass thing per screen. */
+  /** primary = the ground turned inside out, and there is only one per screen. */
   variant?: ButtonVariant;
   size?: ButtonSize;
   /** Stretch to the container's width. */
@@ -27,7 +27,13 @@ const SIZES: Record<ButtonSize, { height: number; paddingHorizontal: number; fon
   lg: { height: tap.lg, paddingHorizontal: 24, ...type.heading },
 };
 
-/** The one control that commits: square, hairline-edged, brass when it is the action. */
+/**
+ * The one control that commits: square, hairline-edged, and filled with the
+ * ground inverted when it is the action — near-black on light paper, near-white
+ * on dark. It is the only solid rectangle on a screen made of hairlines, which
+ * is what makes it the action; no colour is involved, because colour here means
+ * state and committing is not a state.
+ */
 export function Button({
   children,
   variant = 'primary',
@@ -43,28 +49,30 @@ export function Button({
 
   const skin: Record<ButtonVariant, { bg: string; fg: string; border: string; pressedBg: string }> = {
     primary: {
-      bg: colors.brass,
-      fg: colors.onBrass,
+      bg: colors.action,
+      fg: colors.onAction,
       border: 'transparent',
-      pressedBg: colors.brassPressed,
+      pressedBg: colors.actionPressed,
     },
     secondary: {
       bg: colors.surface,
       fg: colors.ink,
       border: colors.hairlineStrong,
-      pressedBg: colors.brassTint,
+      pressedBg: colors.surfaceSunk,
     },
+    // A label, not a filled control, so it takes the link colour: the two
+    // tappable things that are only words read the same everywhere.
     quiet: {
       bg: 'transparent',
-      fg: colors.brass,
+      fg: colors.link,
       border: 'transparent',
-      pressedBg: colors.brassTint,
+      pressedBg: colors.surfaceSunk,
     },
     ghost: {
       bg: 'transparent',
       fg: colors.ink2,
       border: 'transparent',
-      pressedBg: colors.brassTint,
+      pressedBg: colors.surfaceSunk,
     },
   };
   const { bg, fg, border, pressedBg } = skin[variant];

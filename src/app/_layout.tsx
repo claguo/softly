@@ -1,10 +1,10 @@
 import {
-  ShipporiMincho_400Regular,
-  ShipporiMincho_500Medium,
-  ShipporiMincho_600SemiBold,
-  ShipporiMincho_700Bold,
-  ShipporiMincho_800ExtraBold,
-} from '@expo-google-fonts/shippori-mincho';
+  Solway_300Light,
+  Solway_400Regular,
+  Solway_500Medium,
+  Solway_700Bold,
+  Solway_800ExtraBold,
+} from '@expo-google-fonts/solway';
 import { YujiMai_400Regular } from '@expo-google-fonts/yuji-mai';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
@@ -49,15 +49,16 @@ function SyncBootstrap() {
 export default function RootLayout() {
   const { colors } = useTheme();
 
-  // Shippori Mincho carries every readable/tappable string across its five real
-  // weights; Yuji Mai is display-only. Nothing renders until every face is
-  // resident, so text never reflows from a system fallback.
+  // Solway carries every readable/tappable string across its five real weights,
+  // body sitting on the Light cut and the rest stepping up from there; Yuji Mai
+  // is display-only. Nothing renders until every face is resident, so text never
+  // reflows from a system fallback.
   const [fontsLoaded, fontError] = useFonts({
-    ShipporiMincho_400Regular,
-    ShipporiMincho_500Medium,
-    ShipporiMincho_600SemiBold,
-    ShipporiMincho_700Bold,
-    ShipporiMincho_800ExtraBold,
+    Solway_300Light,
+    Solway_400Regular,
+    Solway_500Medium,
+    Solway_700Bold,
+    Solway_800ExtraBold,
     YujiMai_400Regular,
   });
 
@@ -91,8 +92,8 @@ export default function RootLayout() {
       <StatusBar style="auto" />
       <Stack
         screenOptions={{
-          // The stack draws no chrome of its own: every screen carries either
-          // `ScreenHeader` or `BackBar`, which are the app's only two headers.
+          // The stack draws no chrome of its own: a navigator's header is the
+          // same header on every screen, and each of these draws its own top.
           headerShown: false,
           // `contentStyle` is the native stack's equivalent of the tab
           // navigator's `sceneStyle` — the view wrapping each screen, which

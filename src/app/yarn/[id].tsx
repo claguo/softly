@@ -80,6 +80,38 @@ export default function YarnScreen() {
 
   const yardage = row?.yardsTotal ?? null;
 
+  /**
+   * What one skein of this yarn is, as the yarn database has it.
+   *
+   * Not the same number as `yardage` above, and the labels have to keep them
+   * apart: that one is how much of this yarn the knitter has left, this one is
+   * what a ball of it comes as. Both are worth showing — "1,200 yd left" says
+   * nothing about whether that is four balls or forty.
+   *
+   * Free, unlike the fibre content: `stash/list.json` nests the whole yarn
+   * record, so this is already in `raw` and works with no network at all.
+   * `primary_pack` is asked first because it is this entry's own figure where
+   * the knitter has set one.
+   */
+  const perSkeinYards = firstNumber(raw, [
+    ["primary_pack", "yards_per_skein"],
+    ["yarn", "yardage"],
+  ]);
+  const perSkeinGrams = firstNumber(raw, [
+    ["primary_pack", "grams_per_skein"],
+    ["yarn", "grams"],
+  ]);
+
+  // Either half on its own is still worth printing: plenty of yarns record a
+  // yardage and no weight.
+  const perSkein =
+    [
+      perSkeinYards === null ? null : `${Math.round(perSkeinYards)} yd`,
+      perSkeinGrams === null ? null : `${Math.round(perSkeinGrams)} g`,
+    ]
+      .filter((part): part is string => part !== null)
+      .join(" · ") || null;
+
   return (
     <SafeAreaView
       edges={["top"]}
@@ -99,7 +131,7 @@ export default function YarnScreen() {
       />
 
       {row === null ? (
-        <Text style={[styles.stamp, { color: colors.ink3 }]}>Yarn unavailable.</Text>
+        <Text style={[styles.stamp, { color: colors.ink2 }]}>Yarn unavailable.</Text>
       ) : (
         <ScrollView
           contentContainerStyle={{ paddingBottom: space.s10 + insets.bottom }}
@@ -127,13 +159,16 @@ export default function YarnScreen() {
             ) : null}
 
             {committedTo ? (
-              <Text style={[styles.committed, { color: colors.ink3 }]}>
+              <Text style={[styles.committed, { color: colors.ink2 }]}>
                 in {committedTo}
               </Text>
             ) : null}
           </View>
 
-          {row.weightName !== null || yardage !== null || skeins !== null ? (
+          {row.weightName !== null ||
+          yardage !== null ||
+          skeins !== null ||
+          perSkein !== null ? (
             <View
               style={[styles.block, styles.ruled, { borderTopColor: colors.hairline }]}
             >
@@ -141,21 +176,43 @@ export default function YarnScreen() {
                 {row.weightName !== null ? (
                   <Stamp label="weight">{row.weightName}</Stamp>
                 ) : null}
+                {/* Spruce, and labelled "left" rather than "yardage", because
+                    this is the only figure here that is about the knitter's
+                    own bag rather than about the yarn. */}
                 {yardage !== null ? (
                   <Stamp label="left" tone="spruce">{`${Math.round(yardage)} yd`}</Stamp>
                 ) : null}
                 {skeins !== null ? (
                   <Stamp label="skeins">{decimal(skeins)}</Stamp>
                 ) : null}
+                {/* One stamp, not two: the length and the weight of a ball
+                    are a single fact about it — the way a ball band prints
+                    them — and two stamps both labelled "per skein" would read
+                    as a repetition rather than as a pair. */}
+                {perSkein === null ? null : <Stamp label="per skein">{perSkein}</Stamp>}
               </View>
             </View>
           ) : null}
+
+          {/* Its own line rather than another stamp: "60% Mohair, 40% Silk" is
+              a sentence where the others are a word, and it wraps. Absent
+              until the yarn has been fetched once — the stash record carries
+              no fibre content at all, so there is nothing to show offline on a
+              skein this app has never looked up. See `yarn-photos.ts`. */}
+          {row.fibers === null ? null : (
+            <View
+              style={[styles.block, styles.ruled, { borderTopColor: colors.hairline }]}
+            >
+              <Text style={[styles.sectionLabel, { color: colors.ink2 }]}>Material</Text>
+              <Text style={[styles.material, { color: colors.ink2 }]}>{row.fibers}</Text>
+            </View>
+          )}
 
           {hasNotes(notesHtml, notesMarkdown) ? (
             <View
               style={[styles.block, styles.ruled, { borderTopColor: colors.hairline }]}
             >
-              <Text style={[styles.sectionLabel, { color: colors.ink3 }]}>Notes</Text>
+              <Text style={[styles.sectionLabel, { color: colors.ink2 }]}>Notes</Text>
               <RichText html={notesHtml} markdown={notesMarkdown} />
             </View>
           ) : null}
@@ -191,6 +248,11 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 6,
     marginTop: 2,
+  },
+  material: {
+    fontFamily: fonts.ui,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
   },
   committed: {
     fontFamily: fonts.ui,

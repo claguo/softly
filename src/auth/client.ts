@@ -2,12 +2,12 @@
  * Ravelry sign-in, tokens, and the one stored session.
  *
  * Ravelry's OAuth 2 app credentials cannot ship in a client, so the flow goes
- * through a small broker (`soft-goods-auth`): the app opens the broker's
+ * through a small broker (`softly-auth`): the app opens the broker's
  * `/api/login`, Ravelry redirects back to the broker, and the broker bounces to
- * this app's `softgoods://auth` deep link with the authorization code. The
+ * this app's `softly://auth` deep link with the authorization code. The
  * broker exchanges/refreshes with the client secret; the app never holds it.
  *
- * Known limitation: in Expo Go the `softgoods://` redirect cannot return to the
+ * Known limitation: in Expo Go the `softly://` redirect cannot return to the
  * app (Expo Go owns the `exp://` scheme), so the round trip only completes in a
  * dev build or a release build. Nothing here is special-cased for Expo Go.
  *
@@ -19,13 +19,14 @@ import * as Linking from 'expo-linking';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 
-const BROKER_URL = 'https://soft-goods-auth.vercel.app';
+const BROKER_URL = 'https://softly-auth.vercel.app';
 const RAVELRY_API_URL = 'https://api.ravelry.com';
 
 /** Must match the redirect the broker bounces to, and app.json's `scheme`. */
-const RETURN_URL = 'softgoods://auth';
+const RETURN_URL = 'softly://auth';
 
 /** One key holds the whole session; there is no second source of truth. */
+// Legacy name kept deliberately: renaming it would sign out every existing install.
 const SESSION_KEY = 'softgoods.ravelry.session';
 
 /** Treat a token as expired this long before it actually is. */

@@ -18,8 +18,9 @@ export type PhotoFrameProps = {
   width?: DimensionValue;
   /**
    * A colour to lay over the photograph — the skein's own, where the knitter
-   * has said what it is. See `tint` below for what that actually does, and
-   * `tintFor` for where the colour comes from.
+   * has said what it is. It repaints what is already coloured and leaves
+   * neutrals alone; see `tint` below for how, and `tintFor` for where the
+   * colour comes from.
    */
   tint?: string;
 };
@@ -125,7 +126,7 @@ export function PhotoFrame({
       <View style={styles.captionWrap}>
         <Text
           numberOfLines={2}
-          style={[styles.caption, { backgroundColor: colors.surface, color: colors.ink3 }]}>
+          style={[styles.caption, { backgroundColor: colors.surface, color: colors.ink2 }]}>
           {label}
         </Text>
       </View>
@@ -153,18 +154,37 @@ const styles = StyleSheet.create({
   tint: {
     position: 'absolute',
     /**
-     * `color` takes the hue and saturation of this layer and keeps the
-     * *luminosity* of the photograph underneath — so the yarn is recoloured
-     * with its twist, shadow and halo intact, the way a dyer's photograph of
-     * the same skein would look. A flat wash would just hide it.
+     * `hue`, not `color`, and the difference is the whole behaviour.
+     *
+     * - `color` is `SetLum(Cs, Lum(Cb))`: hue *and saturation* come from this
+     *   layer. The photograph only supplies brightness, so a white studio
+     *   background is colourised exactly as hard as the yarn in front of it,
+     *   and every catalogue shot ends up looking like it was lit through a gel.
+     * - `hue` is `SetLum(SetSat(Cs, Sat(Cb)), Lum(Cb))`: the hue is ours, the
+     *   *saturation stays the photograph's*. A pixel with no colour in it has
+     *   none afterwards however strong the tint, and a vivid pixel takes the
+     *   new hue at its own intensity.
+     *
+     * So the paint lands where there is already colour to repaint — the wool —
+     * and leaves the white sweep, the shadow under the ball and the grey of a
+     * label alone. The twist and the halo survive either way; this is the one
+     * that keeps the background too.
+     *
+     * The cost is that the tint can only be as strong as the photograph is
+     * colourful: a washed-out or genuinely grey shot barely moves, and a
+     * neutral colour family (White, Gray, Black, Natural) has no hue worth
+     * applying and shows almost no change at all. That is arguable as
+     * correctness rather than a bug — there is nothing to recolour — but it is
+     * why this is not the mode to reach for if the tint ever has to shout.
      *
      * The opacity is not belt and braces, it is the fallback: where the blend
      * mode is not honoured this degrades to a translucent glaze that still
      * reads as the right colour and still shows the photograph, rather than to
-     * an opaque rectangle that hides it.
+     * an opaque rectangle that hides it. Higher than it was, because `hue` is
+     * bounded by the photograph and cannot overdo it the way `color` could.
      */
-    mixBlendMode: 'color',
-    opacity: 0.72,
+    mixBlendMode: 'hue',
+    opacity: 0.85,
   },
   stack: {
     position: 'absolute',

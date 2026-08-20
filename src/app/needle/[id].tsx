@@ -62,7 +62,7 @@ export default function NeedleScreen() {
       />
 
       {row === null ? (
-        <Text style={[styles.stamp, { color: colors.ink3 }]}>
+        <Text style={[styles.stamp, { color: colors.ink2 }]}>
           Needle unavailable.
         </Text>
       ) : (
@@ -74,17 +74,17 @@ export default function NeedleScreen() {
               style={[
                 styles.swatch,
                 {
-                  backgroundColor: colors.brassTint,
+                  backgroundColor: colors.surfaceSunk,
                   borderColor: colors.hairline,
                 },
               ]}
             >
-              <Text style={[styles.swatchSize, { color: colors.brass }]}>
+              <Text style={[styles.swatchSize, { color: colors.ink }]}>
                 {size}
               </Text>
               {/* Sentence case: the design's "MM" would break the
                   never-all-caps rule. */}
-              <Text style={[styles.swatchUnit, { color: colors.ink3 }]}>mm</Text>
+              <Text style={[styles.swatchUnit, { color: colors.ink2 }]}>mm</Text>
             </View>
 
             <Text style={[styles.title, { color: colors.ink }]}>{kind}</Text>
@@ -119,7 +119,7 @@ export default function NeedleScreen() {
               {/* Said plainly, and only on the rows it applies to. A knitter
                   looking for the Edit that is on the needle below this one
                   deserves the reason rather than a button that does nothing. */}
-              <Text style={[styles.note, { color: colors.ink3 }]}>
+              <Text style={[styles.note, { color: colors.ink2 }]}>
                 This needle came from Ravelry, which has no way to change one.
                 Editing it here would be undone by the next sync.
               </Text>

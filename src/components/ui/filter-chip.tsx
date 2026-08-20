@@ -17,7 +17,12 @@ export type FilterChipProps = {
   onPress?: () => void;
 };
 
-/** One filter in the rail above results: square, hairline-edged, brass when set. */
+/**
+ * One filter in the rail above results: square, hairline-edged, and sunk into
+ * the paper when set. A set chip is not a state, so it takes no colour — it
+ * separates from an unset one on three things at once instead, dropping to the
+ * sunk field and bringing both its label and its border up to full ink.
+ */
 export function FilterChip({
   label,
   value,
@@ -27,8 +32,8 @@ export function FilterChip({
   onPress,
 }: FilterChipProps) {
   const { colors } = useTheme();
-  const fg = active ? colors.brass : colors.ink2;
-  const border = active ? colors.brass : colors.hairlineStrong;
+  const fg = active ? colors.ink : colors.ink2;
+  const border = active ? colors.ink : colors.hairlineStrong;
 
   return (
     <Pressable
@@ -42,7 +47,7 @@ export function FilterChip({
         styles.chip,
         flush ? styles.flush : styles.spaced,
         {
-          backgroundColor: active || pressed ? colors.brassTint : colors.surface,
+          backgroundColor: active || pressed ? colors.surfaceSunk : colors.surface,
           borderColor: border,
         },
       ]}>

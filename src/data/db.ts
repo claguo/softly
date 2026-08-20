@@ -26,6 +26,7 @@ import { openDatabaseSync, type SQLiteDatabase } from 'expo-sqlite';
 
 import { favorites, needles, patternPdfs, projects, stash, syncState, tables } from '@/data/schema';
 
+// Legacy name kept deliberately: renaming it would orphan every existing install's data.
 const DATABASE_NAME = 'softgoods.db';
 
 /**
@@ -171,6 +172,41 @@ function createIndexes(table: SQLiteTable): string[] {
 }
 
 /**
+ * Tables that are nothing but a cache of a remote record, and can therefore be
+ * emptied to make themselves current again.
+ *
+ * `yarn_photos` is the only one. Every row in it was built from one
+ * `/yarns/{id}.json` response and nothing reads it that could not wait a
+ * moment, so throwing it away costs a handful of requests and loses nothing.
+ * `pattern_pdfs` is deliberately *not* here — it is the only handle on a file
+ * already written to disk, and forgetting a row would strand the file.
+ */
+const REFETCHABLE_CACHES = ['yarn_photos'];
+
+/**
+ * Empties a cache that has just grown a column.
+ *
+ * `alter table add column` fills the new column with nulls, and the fill in
+ * `yarn-photos.ts` only asks about yarns it has no row for at all — so without
+ * this, every yarn already cached would keep a null `fibers` forever while
+ * looking, to every query, exactly like a yarn that had been asked about and
+ * had no fibres to report. The two are indistinguishable, which is why the
+ * answer is to forget rather than to try to tell them apart.
+ *
+ * Only fires on the launch that adds the column. The thumbnails come back on
+ * the next fill, which the Stash screen starts as soon as it is looked at.
+ */
+function forgetCachesGaining(alterations: readonly string[]): void {
+  const emptied = REFETCHABLE_CACHES.filter((table) =>
+    alterations.some((statement) => statement.includes(`alter table ${quote(table)}`)),
+  );
+
+  if (emptied.length > 0) {
+    sqlite.execSync(emptied.map((table) => `delete from ${quote(table)};`).join('\n'));
+  }
+}
+
+/**
  * Fills the stash columns that were added to a table already holding rows.
  *
  * `addMissingColumns` can only ever add a column full of nulls, and `sync.ts`
@@ -239,6 +275,7 @@ export function runMigrations(): void {
   const alterations = tables.flatMap(addMissingColumns);
   if (alterations.length > 0) {
     sqlite.execSync(alterations.join('\n'));
+    forgetCachesGaining(alterations);
   }
 
   sqlite.execSync(tables.flatMap(createIndexes).join('\n'));

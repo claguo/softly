@@ -37,10 +37,10 @@ export default function handler(req: VercelRequest, res: VercelResponse): void {
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Soft Goods</title>
+<title>Softly</title>
 <body style="font-family: system-ui, sans-serif; margin: 3rem auto; max-width: 32rem; padding: 0 1rem; text-align: center;">
-<p>Return to Soft Goods&hellip;</p>
-<p><a href="${safeLink}">Open Soft Goods</a></p>
+<p>Return to Softly&hellip;</p>
+<p><a href="${safeLink}">Open Softly</a></p>
 </body>
 </html>`;
 

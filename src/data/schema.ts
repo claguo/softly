@@ -86,18 +86,25 @@ export const stash = sqliteTable(
 );
 
 /**
- * The catalogue photograph for one database yarn, keyed by its Ravelry id.
+ * What this app has learned about one database yarn, keyed by its Ravelry id.
  *
- * This exists because `stash/list.json` hands back no photograph. Not a small
- * one, not a nested one: the record carries `has_photo` (the knitter's own
- * upload, false for almost everyone) and a `yarn` object whose `photos` array
- * is always empty. The picture a knitter recognises their yarn by lives on
- * `/yarns/{id}.json`, one request per yarn, and nowhere in the stash payload.
+ * It began as the photograph and the table is still named for it. That exists
+ * because `stash/list.json` hands back no picture — not a small one, not a
+ * nested one: the record carries `has_photo` (the knitter's own upload, false
+ * for almost everyone) and a `yarn` object whose `photos` array is always
+ * empty. The shot a knitter recognises their yarn by lives on
+ * `/yarns/{id}.json` and nowhere in the stash payload.
  *
- * So it is fetched once per yarn and kept. Like `pattern_pdfs` this is not a
- * mirror of an account and `sync.ts` never empties it — a cache keyed by a
- * catalogue id that does not change, holding a URL that has no reason to. See
- * `yarn-photos.ts`, its only writer.
+ * The fibre content turned out to be missing from that payload in exactly the
+ * same way, and to be sitting in the very response already being fetched for
+ * the photograph — so it is kept here beside it rather than paid for twice.
+ * The name stays `yarn_photos` because renaming a table means bumping
+ * `SCHEMA_VERSION`, and that drops every table including the two that are not
+ * copies of anything. A slightly narrow name is the cheaper mistake.
+ *
+ * Like `pattern_pdfs` this is not a mirror of an account and `sync.ts` never
+ * empties it — a cache keyed by a catalogue id that does not change, holding
+ * facts that have no reason to. See `yarn-photos.ts`, its only writer.
  */
 export const yarnPhotos = sqliteTable('yarn_photos', {
   yarnId: integer('yarn_id').primaryKey(),
@@ -107,6 +114,17 @@ export const yarnPhotos = sqliteTable('yarn_photos', {
    * on every sync for a yarn nobody has ever photographed.
    */
   photoUrl: text('photo_url'),
+  /**
+   * What the yarn is made of, already composed: "60% Mohair, 40% Silk".
+   *
+   * Ravelry sends `yarn_fibers` as a list of parts with percentages and two
+   * levels of taxonomy on each, in no particular order. A stash row wants one
+   * line, so the line is built once here rather than reassembled by every
+   * screen that shows it — the same reasoning as the photograph beside it.
+   *
+   * Null means asked and not told; the endpoint leaves it off plenty of yarns.
+   */
+  fibers: text('fibers'),
   fetchedAt: integer('fetched_at').notNull(),
 });
 
@@ -139,6 +157,30 @@ export const yarnColors = sqliteTable('yarn_colors', {
    */
   colorFamilyId: integer('color_family_id'),
   setAt: integer('set_at').notNull(),
+});
+
+/**
+ * The pattern's own photograph, for a project that has none of its own.
+ *
+ * A project record carries `first_photo` and nothing about the pattern's
+ * pictures — and a knitter who has not photographed their own work yet is the
+ * normal case, not the edge one, so the project screen would otherwise open on
+ * stripes for something the app could show a picture of.
+ *
+ * Most of the time nothing is fetched to fill this: a favourited pattern's
+ * photograph is already on the device inside `favorites.raw`, at full size, and
+ * `pattern-photos.ts` reads it back out rather than asking Ravelry for a file
+ * it already has. The row is only paid for when the pattern was never
+ * bookmarked.
+ *
+ * Like the two caches above, `sync.ts` never empties this — a pattern id is
+ * Ravelry's and does not change.
+ */
+export const patternPhotos = sqliteTable('pattern_photos', {
+  patternId: integer('pattern_id').primaryKey(),
+  /** Null once asked and not answered; that stops it being asked again. */
+  photoUrl: text('photo_url'),
+  fetchedAt: integer('fetched_at').notNull(),
 });
 
 /**
@@ -203,7 +245,55 @@ export const projects = sqliteTable(
 );
 
 /**
- * One downloaded pattern PDF, keyed by the pattern it belongs to.
+ * The rest of one project, from `/projects/{username}/{id}.json`.
+ *
+ * `projects/list.json` is a summary and stops well short of what a project
+ * screen wants to show: verified against the live account on 2026-08-19, it
+ * carries no `packs`, no `needle_sizes`, no `notes` and no `photos`. Those are
+ * the yarn a project ate, the needles it tied up and the words the knitter
+ * wrote about it — most of what there is to say about a finished thing — and
+ * the only way to get any of them is to ask for the project on its own.
+ *
+ * It is a table of its own rather than a fuller `projects.raw` because
+ * `pullProjects` empties that table and refills it from the list endpoint on
+ * every sync: a merged detail would survive until the next pull-to-refresh and
+ * then quietly vanish. Keyed by Ravelry's project id, like `pattern_photos` and
+ * `yarn_photos`, and like both of those `sync.ts` never empties it.
+ *
+ * Unlike those two this is a cache of something that *changes* — finishing a
+ * project rewrites it — so `fetchedAt` is kept and `project-detail.ts` refreshes
+ * behind the screen rather than trusting the row forever.
+ */
+export const projectDetails = sqliteTable('project_details', {
+  projectId: integer('project_id').primaryKey(),
+  raw: text('raw').notNull(),
+  fetchedAt: integer('fetched_at').notNull(),
+});
+
+/**
+ * How a pattern's PDF got onto the phone.
+ *
+ * `'ravelry'` is the chain in `pdfs.ts`: a volume in the knitter's library, an
+ * attachment, a signed link, a download. `'imported'` is a file the knitter
+ * handed over themselves, and it exists because most of the world's patterns
+ * are not Ravelry's to give — a `download_location` on the designer's own site,
+ * or a purchase on a marketplace Ravelry has never heard of. Neither is
+ * fetchable from here, so the knitter downloads it in a browser and brings it
+ * in; from that point it is the same file in the same folder, and every screen
+ * draws both identically.
+ *
+ * Same shape and same reasoning as `NEEDLE_SOURCES`: a defaulted column, so
+ * every row written before it existed reads as the only thing it could have
+ * been. What it changes is the three columns below it — a volume, an
+ * attachment and Ravelry's filename are all null on an imported row, which is
+ * why none of them was ever `not null`.
+ */
+export const PATTERN_PDF_SOURCES = ['ravelry', 'imported'] as const;
+
+export type PatternPdfSource = (typeof PATTERN_PDF_SOURCES)[number];
+
+/**
+ * One pattern PDF on the device, keyed by the pattern it belongs to.
  *
  * The bytes are not in here — they are a file in the app's document directory,
  * named after the pattern, and this row is the note saying which pattern it is
@@ -218,11 +308,15 @@ export const projects = sqliteTable(
  */
 export const patternPdfs = sqliteTable('pattern_pdfs', {
   patternId: integer('pattern_id').primaryKey(),
+  // Defaulted rather than required, for the same reason `needles.source` is:
+  // every row written before this column existed came down the Ravelry chain,
+  // because that was the only way in. Only `importPatternPdf` says otherwise.
+  source: text('source', { enum: PATTERN_PDF_SOURCES }).notNull().default('ravelry'),
   /** The library volume the PDF hangs off, for `volumes/{id}` lookups. */
   volumeId: integer('volume_id'),
   /** What `generate_download_link` takes, if the file is ever re-fetched. */
   productAttachmentId: integer('product_attachment_id'),
-  /** Ravelry's own name for the file — the file on disk is named by pattern. */
+  /** Ravelry's own name for the file, or the knitter's own on an imported one. */
   filename: text('filename'),
   bytes: integer('bytes'),
   filePath: text('file_path').notNull(),
@@ -255,7 +349,9 @@ export const tables = [
   stash,
   needles,
   projects,
+  projectDetails,
   patternPdfs,
+  patternPhotos,
   yarnPhotos,
   yarnColors,
   syncState,
@@ -265,9 +361,11 @@ export type FavoriteRow = typeof favorites.$inferSelect;
 export type StashRow = typeof stash.$inferSelect;
 export type NeedleRow = typeof needles.$inferSelect;
 export type ProjectRow = typeof projects.$inferSelect;
+export type ProjectDetailRow = typeof projectDetails.$inferSelect;
 export type PatternPdfRow = typeof patternPdfs.$inferSelect;
 export type YarnPhotoRow = typeof yarnPhotos.$inferSelect;
 export type YarnColorRow = typeof yarnColors.$inferSelect;
+export type PatternPhotoRow = typeof patternPhotos.$inferSelect;
 export type SyncStateRow = typeof syncState.$inferSelect;
 
 export type FavoriteInsert = typeof favorites.$inferInsert;

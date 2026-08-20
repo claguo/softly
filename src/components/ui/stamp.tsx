@@ -3,7 +3,8 @@ import type { ReactNode } from 'react';
 
 import { fonts, trackMicro, type, useTheme } from '@/theme';
 
-export type StampTone = 'ink' | 'brass' | 'spruce';
+/** `spruce` is the committed state; everything else is a plain measurement. */
+export type StampTone = 'ink' | 'spruce';
 
 export type StampProps = {
   /** The measurement itself, e.g. "4.5 mm", "820 yd". */
@@ -16,11 +17,11 @@ export type StampProps = {
 /** A measurement, stamped: tiny caption above, tracked serif value below. */
 export function Stamp({ children, label, tone = 'ink' }: StampProps) {
   const { colors } = useTheme();
-  const fg = tone === 'brass' ? colors.brass : tone === 'spruce' ? colors.spruce : colors.ink;
+  const fg = tone === 'spruce' ? colors.spruce : colors.ink;
 
   return (
     <View style={styles.stamp}>
-      {label ? <Text style={[styles.label, { color: colors.ink3 }]}>{label}</Text> : null}
+      {label ? <Text style={[styles.label, { color: colors.ink2 }]}>{label}</Text> : null}
       <Text style={[styles.value, { color: fg }]}>{children}</Text>
     </View>
   );

@@ -14,7 +14,7 @@
  *
  * This screen has its own header rather than `ScreenHeader`: the design gives
  * Discover a wordmark bar and a two-line display title, and `ScreenHeader`'s
- * contract (one line, one count, one brass action) has no room for either.
+ * contract (one line, one count, one action) has no room for either.
  */
 
 import { router } from 'expo-router';
@@ -112,8 +112,8 @@ export default function DiscoverScreen() {
   return (
     <SafeAreaView edges={['top']} style={[styles.screen, { backgroundColor: colors.paper }]}>
       <View style={[styles.topBar, { borderBottomColor: colors.hairline }]}>
-        <Text style={[styles.wordmark, { color: colors.ink }]}>Soft Goods</Text>
-        <Text style={[styles.stamp, { color: colors.ink3 }]}>Discover</Text>
+        <Text style={[styles.wordmark, { color: colors.ink }]}>Softly</Text>
+        <Text style={[styles.stamp, { color: colors.ink2 }]}>Discover</Text>
       </View>
 
       {signedOut ? (
@@ -137,7 +137,7 @@ export default function DiscoverScreen() {
                 {titleBottom}
               </Text>
               {search.total !== null ? (
-                <Text style={[styles.count, { color: colors.ink3 }]}>
+                <Text style={[styles.count, { color: colors.ink2 }]}>
                   {formatResultCount(search.total)}
                 </Text>
               ) : null}
@@ -176,7 +176,7 @@ export default function DiscoverScreen() {
             </ScrollView>
 
             {search.unavailable ? (
-              <Text style={[styles.notice, { color: colors.slate }]}>
+              <Text style={[styles.notice, { color: colors.aqua }]}>
                 Search unavailable · check connection
               </Text>
             ) : null}
@@ -199,14 +199,14 @@ export default function DiscoverScreen() {
             windowSize={7}
             ListEmptyComponent={
               search.unavailable && !settling ? null : (
-                <Text style={[styles.quiet, { color: colors.ink3 }]}>
+                <Text style={[styles.quiet, { color: colors.ink2 }]}>
                   {settling ? 'Searching' : 'No patterns match these filters.'}
                 </Text>
               )
             }
             ListFooterComponent={
               settling && search.patterns.length > 0 ? (
-                <Text style={[styles.quiet, { color: colors.ink3 }]}>Loading more</Text>
+                <Text style={[styles.quiet, { color: colors.ink2 }]}>Loading more</Text>
               ) : null
             }
           />

@@ -5,9 +5,9 @@
  * sheet over a sheet is a place to get lost. What it actually was is a screen's
  * worth of decisions — search, or type a name; then a weight, then a colourway
  * — folded into a list that already had two of its own, with its button forced
- * quiet because the brass on that screen was already spoken for. Given its own
+ * quiet because the action on that screen was already spoken for. Given its own
  * sheet it gets the shape it always wanted: one thing to do, said once at the
- * bottom, in brass, because here it *is* the action.
+ * bottom, filled, because here it *is* the action.
  *
  * There are two ways through, and they are the same two as before:
  *
@@ -71,7 +71,7 @@ import { fonts, space, trackMicro, type, useTheme } from "@/theme";
 
 const NOTICES: Record<Problem, string> = {
   failed: "Couldn't add the yarn.",
-  // Slate, not clay: nothing went wrong, the request simply never left.
+  // Aqua, not mustard: nothing went wrong, the request simply never left.
   offline: "You're offline · try again later.",
   signedOut: "Sign in on the You tab to add yarn.",
 };
@@ -208,6 +208,12 @@ export default function AddYarnScreen() {
           ? "No yarns by that name."
           : null;
 
+  // The results and "Can't find it?" are one run of rows, and opening the
+  // hand-typed path takes that last row out of it: with nothing found there is
+  // no run left to draw, and an empty one would still take a section's worth of
+  // space out of the gap below.
+  const hasRows = !byName || search.yarns.length > 0;
+
   return (
     // No `SafeAreaView` top edge, for the same reason as Cast on: on iOS this
     // route is a sheet, already inset from the status bar by the presentation
@@ -221,7 +227,7 @@ export default function AddYarnScreen() {
         },
       ]}
     >
-      <BackBar />
+      <BackBar title="Add a yarn" />
 
       <KeyboardAvoidingView
         style={styles.screen}
@@ -232,18 +238,8 @@ export default function AddYarnScreen() {
           keyboardDismissMode="on-drag"
           contentContainerStyle={styles.content}
         >
-          <View style={styles.block}>
-            <Text style={[styles.title, { color: colors.ink }]}>Add a yarn</Text>
-          </View>
-
-          <View
-            style={[
-              styles.panel,
-              styles.ruled,
-              { borderTopColor: colors.hairline, borderBottomColor: colors.hairline },
-            ]}
-          >
-            <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>Search yarns</Text>
+          <View style={styles.field}>
+            <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>Search yarns</Text>
             {/* The keyboard is up on arrival: the knitter opened this sheet to
                 name a yarn, and the field is the first thing to do. */}
             <TextField
@@ -258,7 +254,7 @@ export default function AddYarnScreen() {
               <Text
                 style={[
                   styles.note,
-                  { color: search.unavailable || search.signedOut ? colors.slate : colors.ink3 },
+                  { color: search.unavailable || search.signedOut ? colors.aqua : colors.ink2 },
                 ]}
               >
                 {searching}
@@ -267,21 +263,33 @@ export default function AddYarnScreen() {
           </View>
 
           {staged === null ? (
-            <View>
-              {search.yarns.map((yarn, index) => (
-                // A result Ravelry sent no id for is keyed by where it landed:
-                // two yarns of the same name would otherwise be one row.
-                <YarnResult
-                  key={`result-${yarn.id ?? yarn.permalink ?? index}`}
-                  yarn={yarn}
-                  onPress={() => stageYarn(yarn)}
-                />
-              ))}
+            <>
+              {/* The rows keep the hairlines and the flush stacking a list
+                  wants: they are results to scan past, not fields to fill in,
+                  and the "add by name" row is one of them until it is tapped. */}
+              {hasRows ? (
+                <View>
+                  {search.yarns.map((yarn, index) => (
+                    // A result Ravelry sent no id for is keyed by where it
+                    // landed: two yarns of the same name would otherwise be
+                    // one row.
+                    <YarnResult
+                      key={`result-${yarn.id ?? yarn.permalink ?? index}`}
+                      yarn={yarn}
+                      onPress={() => stageYarn(yarn)}
+                    />
+                  ))}
+
+                  {byName ? null : (
+                    <AddRow label="Can't find it? Add by name" open={false} onPress={openByName} />
+                  )}
+                </View>
+              ) : null}
 
               {byName ? (
-                <View style={[styles.stack, { borderBottomColor: colors.hairline }]}>
+                <>
                   <View style={styles.field}>
-                    <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>Name</Text>
+                    <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>Name</Text>
                     <TextField
                       value={personalName}
                       onChangeText={setPersonalName}
@@ -293,7 +301,7 @@ export default function AddYarnScreen() {
 
                   <View style={styles.weights}>
                     <View style={styles.field}>
-                      <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>Weight</Text>
+                      <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>Weight</Text>
                     </View>
                     <ScrollView
                       horizontal
@@ -314,7 +322,7 @@ export default function AddYarnScreen() {
                   </View>
 
                   <View style={styles.field}>
-                    <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>Colorway</Text>
+                    <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>Colorway</Text>
                     <TextField
                       value={colorway}
                       onChangeText={setColorway}
@@ -323,16 +331,14 @@ export default function AddYarnScreen() {
                       returnKeyType="done"
                     />
                   </View>
-                </View>
-              ) : (
-                <AddRow label="Can't find it? Add by name" open={false} onPress={openByName} />
-              )}
-            </View>
+                </>
+              ) : null}
+            </>
           ) : (
-            <View>
+            <>
               <StagedYarn yarn={staged} onClear={clearStaged} />
-              <View style={[styles.panel, { borderBottomColor: colors.hairline }]}>
-                <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>Colorway</Text>
+              <View style={styles.field}>
+                <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>Colorway</Text>
                 <TextField
                   value={colorway}
                   onChangeText={setColorway}
@@ -341,7 +347,7 @@ export default function AddYarnScreen() {
                   returnKeyType="done"
                 />
               </View>
-            </View>
+            </>
           )}
         </ScrollView>
 
@@ -356,20 +362,20 @@ export default function AddYarnScreen() {
           ]}
         >
           {saving ? (
-            <Text style={[styles.stamp, { color: colors.ink3 }]}>Adding…</Text>
+            <Text style={[styles.stamp, { color: colors.ink2 }]}>Adding…</Text>
           ) : problem !== null ? (
             <Text
               style={[
                 styles.stamp,
-                { color: problem === "failed" ? colors.clay : colors.slate },
+                { color: problem === "failed" ? colors.mustard : colors.aqua },
               ]}
             >
               {NOTICES[problem]}
             </Text>
           ) : null}
 
-          {/* The one brass thing on this screen. It was quiet while this was an
-              area inside Cast on, because Cast on's brass was the button below
+          {/* The one action on this screen. It was quiet while this was an
+              area inside Cast on, because Cast on's action was the button below
               it; on its own sheet there is nothing else here to be. */}
           <Button
             variant="primary"
@@ -403,19 +409,15 @@ async function weightId(permalink: string): Promise<number | null> {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { paddingBottom: space.s6 },
-  block: {
-    paddingHorizontal: space.s4,
-    paddingVertical: space.s5,
-    gap: space.s2,
-  },
-  ruled: { borderTopWidth: 1 },
-  title: {
-    // 28, the screen-title size, with the leading opened past `type.title`'s
-    // 30 for the same reason every other display line in the app opens it.
-    fontFamily: fonts.display,
-    fontSize: 28,
-    lineHeight: 32,
+  content: {
+    // What used to divide one field from the next is this gap and not a rule:
+    // the field draws its own box now, and a hairline outside it would be a
+    // second edge saying the same thing. 32 rather than the 24 the ruled
+    // rhythm came to, because without the line 24 reads as one group and not
+    // two.
+    gap: space.s8,
+    paddingTop: space.s3,
+    paddingBottom: space.s6,
   },
   fieldLabel: {
     fontFamily: fonts.ui,
@@ -423,22 +425,13 @@ const styles = StyleSheet.create({
     lineHeight: type.micro.lineHeight,
     letterSpacing: trackMicro,
   },
-  panel: {
-    paddingHorizontal: space.s4,
-    paddingVertical: space.s3,
-    gap: space.s2,
-    borderBottomWidth: 1,
-  },
-  // Like `panel`, but for a block whose rail has to reach both edges.
-  stack: {
-    paddingVertical: space.s3,
-    gap: space.s3,
-    borderBottomWidth: 1,
-  },
+  // One thing the sheet asks for: its label and the control under it.
   field: {
     paddingHorizontal: space.s4,
     gap: space.s2,
   },
+  // The weight rail has to reach both edges, so the inset moves off the block
+  // and onto the label inside it.
   weights: { gap: space.s2 },
   rail: {
     // 17 rather than 16: every chip is `flush`, which pulls it 1px left to

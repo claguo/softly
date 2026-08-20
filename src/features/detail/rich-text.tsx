@@ -2,7 +2,7 @@
  * Notes, drawn.
  *
  * `notes.ts` turns Ravelry's notes into blocks and runs; this decides what a
- * block looks like in Soft Goods. Nothing here parses and nothing there styles,
+ * block looks like in Softly. Nothing here parses and nothing there styles,
  * which is why the parser can be run against real API payloads in a bare Node
  * script.
  *
@@ -11,20 +11,28 @@
  *
  * **Emphasis is tone first, weight second.** Shippori Mincho has no italic, so
  * `<em>` cannot lean — a synthetic oblique would be the only skewed type in the
- * app. The system's primary emphasis device is therefore tone: `ink3` → `ink2`
- * → `ink` is how BackBar and the project screen's pattern line already mark
- * "this one matters". Notes read at `ink2`, so emphasis steps to `ink` — a
- * real, legible difference drawn with the system's own vocabulary. The font
- * slots named at the call sites (`uiSemiBold`, `uiMedium`) resolve to genuine
- * cuts of the family, so that tone step now carries a weight step with it.
+ * app. The system's primary emphasis device is therefore tone: `ink2` → `ink`
+ * is how BackBar and the project screen's pattern line already mark "this one
+ * matters". There are only two ink levels now, so notes read at `ink2` and
+ * emphasis steps to `ink` — a real, legible difference drawn with the system's
+ * own vocabulary. The font slots named at the call sites (`uiSemiBold`,
+ * `uiMedium`) resolve to genuine cuts of the family, so that tone step now
+ * carries a weight step with it.
  *
- * **Links are brass.** The one brass thing on a screen is its action, and the
- * project screen deliberately keeps its in-app pattern link in ink for exactly
- * that reason — following a route is not an action. A link in a note is a
- * different animal: it leaves the app entirely, and the handoff's stylesheet
- * paints links brass. No underline at rest; the press affordance is `Text`'s
- * own highlight, the same "colour dips on press" language the rest of the
- * chrome uses.
+ * **Links are `link`, and they are underlined at rest.** Colour now means
+ * state, and a link is the one thing outside that rule: the project screen
+ * deliberately keeps its in-app pattern link in ink, because following a route
+ * inside the app is not leaving it. A link in a note is a different animal — it
+ * takes the knitter out of the app entirely — so it gets the hue.
+ *
+ * The underline is unconditional, and the reason is a measurement rather than a
+ * taste. In dark mode there is no value at the link hue that clears 4.5:1
+ * against a card *and* stays 3:1 clear of `ink`: make it legible and it reads
+ * as body text, separate it from body text and it fails contrast. Colour alone
+ * therefore cannot mark a link in dark. Light has a narrow window where it
+ * could, but a link that is underlined in one theme and not the other is two
+ * different affordances wearing one name, so both themes underline. Press is
+ * still `Text`'s own highlight; the underline is what does the work at rest.
  */
 
 import * as WebBrowser from "expo-web-browser";
@@ -95,7 +103,7 @@ function runNodes(runs: readonly NoteRun[], colors: Palette, base: string): Reac
         accessibilityRole="link"
         accessibilityHint="Opens in a browser"
         onPress={() => open(href)}
-        style={[face, { color: colors.brass }]}
+        style={[face, styles.link, { color: colors.link }]}
       >
         {run.text}
       </Text>
@@ -129,7 +137,7 @@ export function RichText({ html, markdown }: RichTextProps) {
         if (block.kind === "item") {
           return (
             <View key={index} style={[styles.item, { marginTop }]}>
-              <Text style={[styles.body, styles.marker, { color: colors.ink3 }]}>
+              <Text style={[styles.body, styles.marker, { color: colors.ink2 }]}>
                 {block.marker}
               </Text>
               <Text style={[styles.body, styles.itemBody]}>
@@ -145,7 +153,11 @@ export function RichText({ html, markdown }: RichTextProps) {
               key={index}
               style={[styles.quote, { marginTop, borderLeftColor: colors.hairline }]}
             >
-              <Text style={styles.body}>{runNodes(block.runs, colors, colors.ink3)}</Text>
+              {/* A quote used to sit a tone below the prose around it. With one
+                  tone left below `ink`, the left hairline is the whole of what
+                  makes it a quote — which was always the louder of the two
+                  signals anyway. */}
+              <Text style={styles.body}>{runNodes(block.runs, colors, colors.ink2)}</Text>
             </View>
           );
         }
@@ -180,6 +192,10 @@ const styles = StyleSheet.create({
   plain: { fontFamily: fonts.ui },
   strong: { fontFamily: fonts.uiSemiBold },
   em: { fontFamily: fonts.uiMedium },
+  // The only underline in the app, and it stays on whether or not the run is
+  // being pressed. See the note at the top for why colour cannot carry this on
+  // its own in dark.
+  link: { textDecorationLine: 'underline' },
   item: {
     flexDirection: "row",
     alignItems: "flex-start",

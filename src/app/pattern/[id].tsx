@@ -9,11 +9,11 @@
  * that will not load and was never saved is the only genuinely empty case, and
  * it says so in one line rather than a dialog.
  *
- * The screen has exactly one brass control, and it is the point of the screen:
+ * The screen has exactly one action, and it is the point of the screen:
  * "Start project", which only appears once there is a session to write with
  * and a pattern to write about.
  *
- * Under it is the Offline block, which is deliberately not brass. It is the
+ * Under it is the Offline block, which is deliberately quiet. It is the
  * one place in the app that can put a pattern PDF on the phone, and it says
  * only what is true of this pattern right now: that the file is already here,
  * that the knitter owns the pattern and it could be, that the pattern is free
@@ -22,9 +22,29 @@
  * behind that last line and there will not be one; this app never sells.
  * Determining which line to draw costs one walk of the library per session
  * (see `pdfs.ts`), and costs nothing at all once the file is on the device.
+ *
+ * One case answers before the library is asked anything, and outranks all of
+ * them: a pattern whose PDF is on the designer's own site rather than
+ * Ravelry's. Nothing this block can *fetch* will put that file on the phone — a
+ * library entry for it comes back empty, which used to be an offer that ended
+ * in "no PDF on this one yet" — so it stops offering, says where the file
+ * actually is, and hands over the designer's page in a browser.
+ *
+ * Which is half a next step, and the other half is "Import a PDF". A knitter
+ * who taps through to the designer's site downloads the pattern there like
+ * anybody else, and it lands in their Files; a knitter who bought it on Etsy
+ * has had it in their Files for a year. So the block offers to take the file
+ * wherever the ladder has otherwise run out — beside the designer's page, under
+ * the paid-and-unowned sentence, and after a Ravelry download that came back
+ * with nothing attached. Not beside a download that would work: two ways to do
+ * the same thing is one more than a quiet block should have. An imported file
+ * is the same file in the same folder as a downloaded one and every screen
+ * treats it identically; only the stamped line here says which it was, because
+ * where a pattern came from is worth knowing and nothing else about it is.
  */
 
 import { router, useLocalSearchParams } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import {
@@ -40,17 +60,21 @@ import { PhotoFrame } from "@/components/ui/photo-frame";
 import { Stamp } from "@/components/ui/stamp";
 import {
   addToLibraryAndDownload,
+  classifyPatternDownload,
   deletePatternPdf,
   ensurePatternPdf,
   getFavoriteByPatternId,
+  importPatternPdf,
   patternShow,
   probePatternLibrary,
   RavelryApiError,
   usePatternPdf,
+  type ImportProblem,
   type LibraryProbe,
   type PdfProblem,
   type RavelryPatternDetail,
 } from "@/data";
+import { choosePdf } from "@/features/detail/pick-pdf";
 import {
   at,
   decimal,
@@ -80,18 +104,48 @@ const PENDING: PatternState = { settled: false, pattern: null, offline: false };
  * `ask` is the paid-and-unowned case, and it is a sentence rather than a
  * control on purpose: the only honest next step is on Ravelry, and this app
  * does not send anybody there to spend money.
+ *
+ * `external` is the case where there is nothing to download at all, free or
+ * paid, owned or not: the file is the designer's, not Ravelry's. It keeps a
+ * control, because unlike `ask` there is somewhere useful to go.
  */
-type OfflineView = "downloaded" | "download" | "add" | "ask";
+type OfflineView = "downloaded" | "download" | "add" | "ask" | "external";
 
 /** One quiet line per way a download can not happen. */
 const PDF_NOTICES: Record<PdfProblem, string> = {
   notInLibrary: "Not in your Ravelry library.",
   noDownload: "No PDF on this one yet.",
-  // Slate, not clay: nothing went wrong, the request simply never left.
+  externalDownload: "PDF lives on the designer's site.",
+  // Aqua, not mustard: nothing went wrong, the request simply never left.
   offline: "You're offline · try again later.",
   signedOut: "Sign in on the You tab to download.",
   failed: "Couldn't download the pattern.",
 };
+
+/**
+ * One quiet line per way an import can not happen.
+ *
+ * Two, because an import touches nothing but the filesystem: there is no
+ * library to be outside of and no network to be off. `notAPdf` is the one the
+ * knitter can act on, so it says what is actually wrong rather than being
+ * folded into "couldn't" — they picked the wrong file, and the fix is to pick
+ * again.
+ */
+const IMPORT_NOTICES: Record<ImportProblem, string> = {
+  notAPdf: "That file isn't a PDF.",
+  failed: "Couldn't import that file.",
+};
+
+/**
+ * The `external` line, in the block's own register: what is true, then what
+ * follows from it. Not mustard — nothing has gone wrong, and the two controls
+ * under it are the two halves of a next step that works.
+ *
+ * It used to end "can't be saved here", which was true of a block that could
+ * only fetch. Now that a knitter can bring the file back themselves, saying so
+ * would be the app refusing something it does in fact do.
+ */
+const EXTERNAL_NOTICE = "PDF lives on the designer's site · save it there, then import it.";
 
 /**
  * `personal_attributes` only arrives on a request made with a person's token,
@@ -204,6 +258,10 @@ export default function PatternScreen() {
   const [probe, setProbe] = useState<LibraryProbe | null>(null);
   const [busy, setBusy] = useState<"download" | "add" | null>(null);
   const [problem, setProblem] = useState<PdfProblem | null>(null);
+  // Kept apart from `busy`/`problem` above: those two are the Ravelry chain's,
+  // and an import runs on neither the library nor the network.
+  const [importing, setImporting] = useState(false);
+  const [importProblem, setImportProblem] = useState<ImportProblem | null>(null);
 
   useEffect(() => {
     // A route with no usable id asks Ravelry nothing; see `settled` below.
@@ -269,11 +327,26 @@ export default function PatternScreen() {
   }, [id, pdf, username]);
 
   /**
+   * Where this pattern's PDF is, as the payload tells it.
+   *
+   * The one fact about downloading that needs no request at all — and the one
+   * that can rule the whole block out. Only the live payload carries it: a
+   * pattern read from the cached bookmark reads `unknown`, which is exactly the
+   * behaviour the block had before this existed.
+   */
+  const download = useMemo(
+    () => classifyPatternDownload(state.pattern),
+    [state.pattern],
+  );
+
+  /**
    * The two ways to get a PDF onto the phone, which differ by one call.
    *
    * `add` writes to the knitter's library, so the block only offers it for a
-   * pattern Ravelry says is free. Neither throws — both answer — so a failure
-   * is a line under the button rather than something to catch.
+   * pattern Ravelry says is free — and hands `addToLibraryAndDownload` what the
+   * payload said, so an external one is refused there too even if this screen
+   * ever asks for it by mistake. Neither throws — both answer — so a failure is
+   * a line under the button rather than something to catch.
    */
   const acquire = useCallback(
     (kind: "download" | "add") => {
@@ -283,11 +356,12 @@ export default function PatternScreen() {
 
       setBusy(kind);
       setProblem(null);
+      setImportProblem(null);
 
       void (async () => {
         const outcome =
           kind === "add"
-            ? await addToLibraryAndDownload(username, id)
+            ? await addToLibraryAndDownload(username, id, download)
             : await ensurePatternPdf(username, id);
 
         setBusy(null);
@@ -304,20 +378,74 @@ export default function PatternScreen() {
         }
       })();
     },
-    [busy, id, username],
+    [busy, download, id, username],
   );
+
+  /**
+   * The other way in: the knitter's own copy of the file.
+   *
+   * Needs no session and no library — a pattern bought on Etsy is a PDF in
+   * Files and nothing else — so unlike `acquire` this asks for neither. Backing
+   * out of the picker is the commonest outcome by far and is completely silent:
+   * nothing was attempted, so there is nothing to report.
+   *
+   * A file that lands clears `problem` on the way past. "No PDF on this one
+   * yet" is what sent them here and it is answered now; leaving it in mustard
+   * under "Imported · available offline" would be the block arguing with
+   * itself.
+   */
+  const importPdf = useCallback(() => {
+    if (id === null || importing) {
+      return;
+    }
+
+    setImporting(true);
+    setImportProblem(null);
+
+    void (async () => {
+      // Both of these report through their answers rather than throwing.
+      const picked = await choosePdf();
+
+      if (picked.kind !== "picked") {
+        setImporting(false);
+        // A picker that would not open is the one thing here worth a line;
+        // a knitter who changed their mind is not.
+        if (picked.kind === "unavailable") {
+          setImportProblem("failed");
+        }
+        return;
+      }
+
+      const outcome = await importPatternPdf(id, picked.file);
+      setImporting(false);
+
+      if (outcome.ok) {
+        setProblem(null);
+      } else {
+        setImportProblem(outcome.reason);
+      }
+    })();
+  }, [id, importing]);
 
   const removeDownload = useCallback(() => {
     if (id === null) {
       return;
     }
 
+    const imported = pdf?.source === "imported";
+
     deletePatternPdf(id);
     setProblem(null);
-    // Still owned — only the copy on the phone is gone — so the block goes
-    // back to offering the download rather than asking the question again.
-    setProbe({ kind: "inLibrary" });
-  }, [id]);
+    setImportProblem(null);
+    // A downloaded copy was proof of ownership, and removing it changes only
+    // what is on the phone — so the block goes straight back to offering the
+    // download rather than asking the library again. An imported copy proves
+    // nothing of the sort: it may have been bought somewhere Ravelry has never
+    // heard of, and claiming a library entry for it would offer a download
+    // that comes back "not in your Ravelry library". So that one is asked
+    // again, which the probe does by itself the moment the row is gone.
+    setProbe(imported ? null : { kind: "inLibrary" });
+  }, [id, pdf]);
 
   const pattern = state.pattern;
   // A malformed id is answered without asking: there is nothing in flight.
@@ -366,7 +494,7 @@ export default function PatternScreen() {
   const craft = pattern === null ? null : firstString(pattern, [["craft", "permalink"]]);
 
   /**
-   * Which of the four things the Offline block has to say, or nothing.
+   * Which of the five things the Offline block has to say, or nothing.
    *
    * Nothing is a real answer here and the common one on the way in: until the
    * library has answered there is no honest line to draw, and a block that
@@ -374,23 +502,71 @@ export default function PatternScreen() {
    * saying "checking". A request in flight keeps its own line rather than
    * disappearing, and a library that could not be reached says nothing at all —
    * being offline is not news on a screen about reading offline.
+   *
+   * `external` sits second, under the file itself and above everything the
+   * library could say, because it answers all of it: owned or not, free or
+   * paid, there is no Ravelry file to fetch. It needs no probe either, so on an
+   * external pattern the block is honest on the first frame after the payload
+   * lands. A copy already on the device still wins — however it got here, it
+   * reads offline, and that is the whole point of the block.
    */
   const offline: OfflineView | null =
     pdf !== null
       ? "downloaded"
-      : busy !== null
-        ? busy
-        : probe === null || probe.kind === "unknown" || probe.kind === "downloaded"
-          ? null
-          : probe.kind === "inLibrary"
-            ? "download"
-            : // Not owned. Whether that is an offer or a sentence depends on
-              // the `free` flag, which only the live payload carries.
-              !settled
-              ? null
-              : free
-                ? "add"
-                : "ask";
+      : download.kind === "external"
+        ? "external"
+        : busy !== null
+          ? busy
+          : probe === null || probe.kind === "unknown" || probe.kind === "downloaded"
+            ? null
+            : probe.kind === "inLibrary"
+              ? "download"
+              : // Not owned. Whether that is an offer or a sentence depends on
+                // the `free` flag, which only the live payload carries.
+                !settled
+                ? null
+                : free
+                  ? "add"
+                  : "ask";
+
+  /**
+   * The failure line under the block, when there is one to draw.
+   *
+   * Never under the `external` line. An attempt already in flight when the
+   * payload landed comes back "no PDF on this one yet", which is the same fact
+   * said worse — and said in mustard, as though something had gone wrong.
+   */
+  const notice = offline === "external" ? null : problem;
+
+  const externalUrl = download.kind === "external" ? download.url : null;
+
+  /**
+   * Whether the block offers to take a file by hand.
+   *
+   * Exactly where the ladder has run out, and nowhere else:
+   *
+   * - `external`, where the file was never Ravelry's and the browser above is
+   *   only the first half of getting it.
+   * - `ask`, the paid pattern nobody here has bought — which is precisely the
+   *   pattern somebody bought on Etsy or LoveCrafts and already has.
+   * - after a real `noDownload`, where Ravelry was asked for the file, took the
+   *   pattern into the library, and had nothing to attach.
+   *
+   * Not beside "Download for offline" or "Add to library & download" while
+   * either still might work: a second way to do the same thing is one more
+   * than this block should have, and the Ravelry copy is the better one — it
+   * comes with a volume and an attachment and can be fetched again. Not while
+   * a download is in flight, for the same reason. Not once a file is here,
+   * where the two controls are Open and Remove and neither is this.
+   */
+  const canImport =
+    pdf === null &&
+    busy === null &&
+    (offline === "external" || offline === "ask" || problem === "noDownload");
+
+  /** The Ravelry control this branch draws, if it has one to draw. */
+  const showExternalLink = offline === "external" && externalUrl !== null;
+  const showAcquire = offline === "download" || offline === "add";
 
   const openPdf = useCallback(() => {
     if (id === null) {
@@ -398,6 +574,20 @@ export default function PatternScreen() {
     }
     router.push({ pathname: "/pdf/[patternId]", params: { patternId: id, name } });
   }, [id, name]);
+
+  /**
+   * The designer's page, in the in-app browser — the same handoff a link in the
+   * notes gets, and for the same reason: this is still reading the pattern, and
+   * coming back should be one tap. A browser that refuses to open is not worth
+   * an alert. The URL was checked for an http(s) scheme in `pdfs.ts`; a payload
+   * that carried anything else arrives here as null and draws no control.
+   */
+  const openExternal = useCallback(() => {
+    if (externalUrl === null) {
+      return;
+    }
+    void WebBrowser.openBrowserAsync(externalUrl).catch(() => undefined);
+  }, [externalUrl]);
 
   return (
     <SafeAreaView
@@ -407,7 +597,7 @@ export default function PatternScreen() {
       <BackBar />
 
       {empty ? (
-        <Text style={[styles.stamp, { color: colors.ink3 }]}>
+        <Text style={[styles.stamp, { color: colors.ink2 }]}>
           {!settled
             ? "Loading"
             : state.offline
@@ -422,7 +612,7 @@ export default function PatternScreen() {
             <PhotoFrame src={photo} label="pattern photo" aspect="4/5" />
             {saved ? (
               <View style={[styles.saved, { backgroundColor: colors.surface }]}>
-                <Text style={[styles.savedGlyph, { color: colors.brass }]}>♥</Text>
+                <Text style={[styles.savedGlyph, { color: colors.ink }]}>♥</Text>
               </View>
             ) : null}
           </View>
@@ -437,7 +627,7 @@ export default function PatternScreen() {
             {/* Only once the request has answered: until then the saved copy
                 is simply what is on screen first, not a fallback. */}
             {settled && pattern === null ? (
-              <Text style={[styles.notice, { color: colors.slate }]}>
+              <Text style={[styles.notice, { color: colors.aqua }]}>
                 offline · showing saved copy
               </Text>
             ) : null}
@@ -465,7 +655,7 @@ export default function PatternScreen() {
             </View>
           ) : null}
 
-          {/* The one brass thing on this screen, under the facts and above
+          {/* The one action on this screen, under the facts and above
               the designer's own words — after everything there is to know
               about the pattern, before everything there is to read. */}
           {canStart ? (
@@ -491,36 +681,55 @@ export default function PatternScreen() {
             </View>
           ) : null}
 
-          {/* Quiet by construction: the brass above is the thing to do with a
+          {/* Quiet by construction: the action above is the thing to do with a
               pattern, and taking a copy of it is housekeeping. */}
           {offline !== null ? (
             <View
               style={[styles.block, styles.ruled, { borderTopColor: colors.hairline }]}
             >
-              <Text style={[styles.sectionLabel, { color: colors.ink3 }]}>Offline</Text>
+              <Text style={[styles.sectionLabel, { color: colors.ink2 }]}>Offline</Text>
 
               {offline === "downloaded" ? (
+                // Where it came from, when it did not come from Ravelry. Worth
+                // one word: it is the difference between a file this app can
+                // fetch again and one only the knitter can replace.
                 <Text style={[styles.notice, { color: colors.spruce }]}>
-                  Available offline
+                  {pdf?.source === "imported"
+                    ? "Imported · available offline"
+                    : "Available offline"}
+                </Text>
+              ) : offline === "external" ? (
+                <Text style={[styles.notice, { color: colors.ink2 }]}>
+                  {EXTERNAL_NOTICE}
                 </Text>
               ) : offline === "ask" ? (
-                <Text style={[styles.notice, { color: colors.ink3 }]}>
+                <Text style={[styles.notice, { color: colors.ink2 }]}>
                   In your Ravelry library? Download appears here.
                 </Text>
               ) : null}
 
+              {/* One line at a time, most recent thing first. An import that
+                  just failed outranks whatever Ravelry said before it: that
+                  line is why they reached for the picker, and it comes back by
+                  itself the moment the import is cancelled or succeeds. */}
               {busy !== null ? (
-                <Text style={[styles.notice, { color: colors.ink3 }]}>
+                <Text style={[styles.notice, { color: colors.ink2 }]}>
                   {busy === "add" ? "Adding to library…" : "Downloading…"}
                 </Text>
-              ) : problem !== null ? (
+              ) : importing ? (
+                <Text style={[styles.notice, { color: colors.ink2 }]}>Importing…</Text>
+              ) : importProblem !== null ? (
+                <Text style={[styles.notice, { color: colors.mustard }]}>
+                  {IMPORT_NOTICES[importProblem]}
+                </Text>
+              ) : notice !== null ? (
                 <Text
                   style={[
                     styles.notice,
-                    { color: problem === "offline" ? colors.slate : colors.clay },
+                    { color: notice === "offline" ? colors.aqua : colors.mustard },
                   ]}
                 >
-                  {PDF_NOTICES[problem]}
+                  {PDF_NOTICES[notice]}
                 </Text>
               ) : null}
 
@@ -545,23 +754,55 @@ export default function PatternScreen() {
                     Remove download
                   </Button>
                 </View>
-              ) : offline === "ask" ? null : (
+              ) : showExternalLink || showAcquire || canImport ? (
+                /* At most two quiet words, in the order they are done in:
+                   whatever Ravelry can still do for this pattern, and then the
+                   way in by hand. Nothing at all is a real answer, and it is
+                   one case — an external pattern that carried no usable URL,
+                   with a download somehow already in flight. The line above
+                   stands on its own there, which beats a control going
+                   nowhere. */
                 <View style={styles.actions}>
-                  <Button
-                    variant="quiet"
-                    size="sm"
-                    disabled={busy !== null}
-                    accessibilityLabel={
-                      offline === "add"
-                        ? `Add ${name} to your library and download it`
-                        : `Download ${name} for offline`
-                    }
-                    onPress={() => acquire(offline === "add" ? "add" : "download")}
-                  >
-                    {offline === "add" ? "Add to library & download" : "Download for offline"}
-                  </Button>
+                  {showExternalLink ? (
+                    <Button
+                      variant="quiet"
+                      size="sm"
+                      accessibilityLabel={`Open the pattern page for ${name} in a browser`}
+                      onPress={openExternal}
+                    >
+                      Open pattern page
+                    </Button>
+                  ) : null}
+
+                  {showAcquire ? (
+                    <Button
+                      variant="quiet"
+                      size="sm"
+                      disabled={busy !== null}
+                      accessibilityLabel={
+                        offline === "add"
+                          ? `Add ${name} to your library and download it`
+                          : `Download ${name} for offline`
+                      }
+                      onPress={() => acquire(offline === "add" ? "add" : "download")}
+                    >
+                      {offline === "add" ? "Add to library & download" : "Download for offline"}
+                    </Button>
+                  ) : null}
+
+                  {canImport ? (
+                    <Button
+                      variant="quiet"
+                      size="sm"
+                      disabled={importing}
+                      accessibilityLabel={`Import a PDF you already have for ${name}`}
+                      onPress={importPdf}
+                    >
+                      Import a PDF
+                    </Button>
+                  ) : null}
                 </View>
-              )}
+              ) : null}
             </View>
           ) : null}
 
@@ -569,7 +810,7 @@ export default function PatternScreen() {
             <View
               style={[styles.block, styles.ruled, { borderTopColor: colors.hairline }]}
             >
-              <Text style={[styles.sectionLabel, { color: colors.ink3 }]}>Notes</Text>
+              <Text style={[styles.sectionLabel, { color: colors.ink2 }]}>Notes</Text>
               <RichText html={notesHtml} markdown={notesMarkdown} />
             </View>
           ) : null}

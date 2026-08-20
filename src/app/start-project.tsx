@@ -5,7 +5,7 @@
  * scroll, because there are only three things to say: what to call it, which
  * yarn it eats, and which needles it ties up. All three are optional except
  * the name, and the name arrives already filled in with the pattern's, so the
- * shortest honest path through this screen is one tap on the brass.
+ * shortest honest path through this screen is one tap on the action.
  *
  * Yarn and needles come from the local mirror, so the lists are right on the
  * first frame with no network. Two quiet rows widen them past what the mirror
@@ -13,7 +13,7 @@
  *
  * - **Add a yarn** hands off to a sheet of its own, which searches Ravelry's
  *   yarn database or takes a name typed by hand and writes a real stash entry.
- *   That sheet is where the second brass button in this flow lives, because
+ *   That sheet is where the second action button in this flow lives, because
  *   there it is the only thing to do. It comes back with the skein it made
  *   already chosen here — see `pending-selection` for the whole protocol.
  * - **All sizes** opens Ravelry's whole needle size table, inline, because
@@ -87,7 +87,7 @@ import { fonts, space, trackMicro, type, useTheme } from "@/theme";
 
 const NOTICES: Record<Problem, string> = {
   failed: "Couldn't start the project.",
-  // Slate, not clay: nothing went wrong, the request simply never left.
+  // Aqua, not mustard: nothing went wrong, the request simply never left.
   offline: "You're offline · try again later.",
   signedOut: "Sign in on the You tab to start a project.",
 };
@@ -374,7 +374,7 @@ export default function StartProjectScreen() {
     ({ item }: { item: Choice }) => {
       switch (item.kind) {
         case "empty":
-          return <Text style={[styles.quiet, { color: colors.ink3 }]}>{item.line}</Text>;
+          return <Text style={[styles.quiet, { color: colors.ink2 }]}>{item.line}</Text>;
 
         case "yarn":
           return (
@@ -456,9 +456,9 @@ export default function StartProjectScreen() {
 
   const renderSectionHeader = useCallback(
     ({ section }: { section: ChoiceSection }) => (
-      <Text style={[styles.sectionLabel, { color: colors.ink3 }]}>{section.title}</Text>
+      <Text style={[styles.sectionLabel, { color: colors.ink2 }]}>{section.title}</Text>
     ),
-    [colors.ink3],
+    [colors.ink2],
   );
 
   return (
@@ -502,7 +502,7 @@ export default function StartProjectScreen() {
             // there, and a second one would be two rules where the design has
             // one. The name is the display line now, so the field wears it.
             <View style={styles.block}>
-              <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>Name</Text>
+              <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>Name</Text>
               <TextField
                 value={name}
                 onChangeText={setName}
@@ -526,7 +526,7 @@ export default function StartProjectScreen() {
           ]}
         >
           {busy ? (
-            <Text style={[styles.stamp, { color: colors.ink3 }]}>Casting on…</Text>
+            <Text style={[styles.stamp, { color: colors.ink2 }]}>Casting on…</Text>
           ) : problem === "signedOut" ? (
             <Text style={[styles.invitation, { color: colors.ink2 }]}>
               {NOTICES.signedOut}
@@ -535,7 +535,7 @@ export default function StartProjectScreen() {
             <Text
               style={[
                 styles.stamp,
-                { color: problem === "offline" ? colors.slate : colors.clay },
+                { color: problem === "offline" ? colors.aqua : colors.mustard },
               ]}
             >
               {NOTICES[problem]}

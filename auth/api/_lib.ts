@@ -3,11 +3,11 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 export const RAVELRY_AUTHORIZE_URL = "https://www.ravelry.com/oauth2/auth";
 export const RAVELRY_TOKEN_URL = "https://www.ravelry.com/oauth2/token";
 
-/** Scopes Soft Goods needs: "offline" is what makes Ravelry issue refresh tokens. */
+/** Scopes Softly needs: "offline" is what makes Ravelry issue refresh tokens. */
 export const DEFAULT_SCOPE = "offline library-pdf";
 
-/** Deep link back into the Expo app (app.json -> expo.scheme = "softgoods"). */
-export const APP_DEEP_LINK = "softgoods://auth";
+/** Deep link back into the Expo app (app.json -> expo.scheme = "softly"). */
+export const APP_DEEP_LINK = "softly://auth";
 
 export interface Config {
   clientId: string;

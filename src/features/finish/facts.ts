@@ -11,6 +11,7 @@
  * drawn — never a zero, never a dash.
  */
 
+import { MONTHS } from "@/features/detail/project";
 import { at, firstNumber, firstString, readString } from "@/features/detail/raw";
 
 export type Fact = {
@@ -20,21 +21,6 @@ export type Fact = {
 };
 
 const DAY_MS = 86_400_000;
-
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-] as const;
 
 /**
  * One calendar day as UTC midnight, from `2025/12/21`, `2025-12-21`, or either

@@ -67,7 +67,7 @@ export function ProjectCard({
       style={({ pressed }) => [
         styles.card,
         { borderColor: colors.hairline },
-        pressed && onPress ? { backgroundColor: colors.brassTint } : null,
+        pressed && onPress ? { backgroundColor: colors.surfaceSunk } : null,
       ]}
     >
       <PhotoFrame src={photo} label="project photo" width={96} aspect="1/1" />
@@ -78,7 +78,7 @@ export function ProjectCard({
             {name}
           </Text>
           {touched ? (
-            <Text style={[styles.touched, { color: colors.ink3 }]}>
+            <Text style={[styles.touched, { color: colors.ink2 }]}>
               {touched}
             </Text>
           ) : null}
@@ -87,7 +87,7 @@ export function ProjectCard({
         {source ? (
           <Text
             numberOfLines={1}
-            style={[styles.source, { color: colors.ink3 }]}
+            style={[styles.source, { color: colors.ink2 }]}
           >
             {source}
           </Text>
@@ -112,7 +112,7 @@ export function ProjectCard({
                 ]}
               />
             </View>
-            <Text style={[styles.rows, { color: colors.ink3 }]}>
+            <Text style={[styles.rows, { color: colors.ink2 }]}>
               {rows}/{rowsTotal} rows
             </Text>
           </View>

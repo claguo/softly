@@ -1,6 +1,7 @@
 /**
- * Soft Goods design system — the components the screens are assembled from.
- * Square corners, hairlines not shadows, sentence case, one brass action.
+ * Softly design system — the components the screens are assembled from.
+ * Square corners, hairlines not shadows, sentence case, one filled action.
+ * There is no accent: colour marks state and links, and nothing else.
  */
 
 export {

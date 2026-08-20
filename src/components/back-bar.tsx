@@ -5,14 +5,17 @@ import { fonts, space, tap, trackMicro, type, useTheme } from "@/theme";
 
 export type BackBarProps = {
   /**
-   * Optional, and left off almost everywhere: a screen with a display line of
-   * its own does not need its name twice.
+   * The test is whether anything below this bar introduces the screen. Content
+   * that opens on a display line of its own has already done it, and the bar
+   * stays quiet behind it. A run of fields has no such line, so the name has
+   * nowhere to go but up here and the bar carries it. Never both.
    */
   title?: string;
   /**
-   * The one text action for the screen, right-aligned in brass — `ScreenHeader`'s
-   * `action`, on the pushed screens. Left off unless a screen has something to
-   * do with what it is showing; the way *out* of a screen is still not it.
+   * The one text action for the screen, right-aligned and set in the link
+   * colour — `ScreenHeader`'s `action`, on the pushed screens. Left off unless a
+   * screen has something to do with what it is showing; the way *out* of a
+   * screen is still not it.
    */
   action?: string;
   onAction?: () => void;
@@ -24,11 +27,12 @@ export type BackBarProps = {
  *
  * It is `ScreenHeader`'s metrics exactly — same padding, same hairline, same
  * stamped label at the same 48pt hit box pulled back into the padding — so a
- * detail screen sits at the same height as the list it came from. It takes an
- * optional title and nothing else: still no subtitle, still no brass action,
- * because the one brass thing per screen is not the way out of it. Titleless
- * stays the default, since most screens carry their title as their own display
- * line below and only want a name up here when that line is spoken for.
+ * detail screen sits at the same height as the list it came from. Still no
+ * subtitle, and the way back is never coloured: the one thing a screen sets in
+ * the link colour is something it does, and the way out is not it. Back is ink,
+ * darkening to full strength when it is held. The name keeps to one place
+ * too — this bar, or a display line down in the content, according to whether
+ * that content can introduce itself, and never both.
  */
 export function BackBar({ title, action, onAction }: BackBarProps) {
   const { colors } = useTheme();
@@ -80,7 +84,7 @@ export function BackBar({ title, action, onAction }: BackBarProps) {
               <Text
                 style={[
                   styles.label,
-                  { color: pressed ? colors.brassPressed : colors.brass },
+                  { color: pressed ? colors.linkPressed : colors.link },
                 ]}
               >
                 {action}

@@ -120,7 +120,7 @@ export default function HomeScreen() {
             <RefreshControl
               refreshing={sync.phase === "syncing"}
               onRefresh={onRefresh}
-              tintColor={colors.ink3}
+              tintColor={colors.ink2}
             />
           )
         }
@@ -130,7 +130,7 @@ export default function HomeScreen() {
               Sign in on the You tab to see what is on your needles.
             </Text>
           ) : sync.lastSyncedAt !== null ? (
-            <Text style={[styles.stamp, { color: colors.ink3 }]}>
+            <Text style={[styles.stamp, { color: colors.ink2 }]}>
               Nothing on the needles yet.
             </Text>
           ) : null

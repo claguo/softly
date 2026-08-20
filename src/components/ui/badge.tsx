@@ -8,7 +8,12 @@ export type BadgeTone = 'library' | 'offline' | 'queued' | 'committed' | 'attent
 export type BadgeProps = {
   /** Sentence-case label, e.g. "in library", "on device". */
   children?: ReactNode;
-  /** Fixed meanings: library (brass), offline/queued (slate), committed (spruce), attention (clay), neutral. */
+  /**
+   * Fixed meanings. Only the three states get a colour: offline/queued is aqua,
+   * committed is spruce, attention is mustard. `library` and `neutral` are facts
+   * rather than states, so they share the sunk field and separate on weight of
+   * ink — library at full strength, neutral quieter.
+   */
   tone?: BadgeTone;
   /** Leading 5px status dot — the only round shape in the system besides the tab pill. */
   dot?: boolean;
@@ -18,11 +23,11 @@ export type BadgeProps = {
 export function Badge({ children, tone = 'neutral', dot = false }: BadgeProps) {
   const { colors } = useTheme();
   const skin: Record<BadgeTone, { bg: string; fg: string }> = {
-    library: { bg: colors.brassTint, fg: colors.brass },
-    offline: { bg: colors.slateTint, fg: colors.slate },
-    queued: { bg: colors.slateTint, fg: colors.slate },
+    library: { bg: colors.surfaceSunk, fg: colors.ink },
+    offline: { bg: colors.aquaTint, fg: colors.aqua },
+    queued: { bg: colors.aquaTint, fg: colors.aqua },
     committed: { bg: colors.spruceTint, fg: colors.spruce },
-    attention: { bg: colors.clayTint, fg: colors.clay },
+    attention: { bg: colors.mustardTint, fg: colors.mustard },
     neutral: { bg: colors.surfaceSunk, fg: colors.ink2 },
   };
   const { bg, fg } = skin[tone];

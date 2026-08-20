@@ -40,6 +40,62 @@ import { stash, yarnPhotos } from '@/data/schema';
  */
 const PHOTO_URL_KEYS = ['square_url', 'small_url', 'thumbnail_url', 'medium_url'] as const;
 
+/**
+ * A yarn's `yarn_fibers` as one line: "60% Mohair, 40% Silk".
+ *
+ * Ravelry sends a list of parts, each with a percentage and two levels of
+ * taxonomy — `fiber_type` ("Mohair") and `fiber_category`, which sometimes
+ * nests a parent ("Goat"). The type is the word a knitter uses, so that is the
+ * one taken, with the category as a fallback for a part typed oddly.
+ *
+ * Ordered most of the yarn first, because that is how a label reads it and
+ * because the API's own order is neither that nor alphabetical — the 60/40
+ * above arrives 40 first. A part with no percentage keeps its name and loses
+ * the number rather than the whole line.
+ */
+function fiberLine(yarn: Record<string, unknown>): string | null {
+  const parts = yarn.yarn_fibers;
+
+  if (!Array.isArray(parts) || parts.length === 0) {
+    return null;
+  }
+
+  const named = parts.flatMap((part) => {
+    if (typeof part !== 'object' || part === null) {
+      return [];
+    }
+
+    const record = part as Record<string, unknown>;
+    const type = record.fiber_type as Record<string, unknown> | undefined;
+    const category = record.fiber_category as Record<string, unknown> | undefined;
+    const name =
+      typeof type?.name === 'string'
+        ? type.name
+        : typeof category?.name === 'string'
+          ? category.name
+          : null;
+
+    if (name === null || name.trim() === '') {
+      return [];
+    }
+
+    const percentage = typeof record.percentage === 'number' ? record.percentage : null;
+
+    return [{ name: name.trim(), percentage }];
+  });
+
+  if (named.length === 0) {
+    return null;
+  }
+
+  // Unpercentaged parts sink rather than sorting as zero among real numbers.
+  named.sort((a, b) => (b.percentage ?? -1) - (a.percentage ?? -1));
+
+  return named
+    .map((part) => (part.percentage === null ? part.name : `${part.percentage}% ${part.name}`))
+    .join(', ');
+}
+
 /** The first usable URL on a yarn's `photos`, or null if it has none. */
 function catalogPhoto(yarn: Record<string, unknown>): string | null {
   const photos = yarn.photos;
@@ -109,13 +165,19 @@ async function fetchInto(ids: number[]): Promise<void> {
       }
 
       try {
-        const url = catalogPhoto(await yarnShow(id));
+        // One response, two facts. The fibre content is missing from the stash
+        // payload for the same reason the photograph is, and it is right here
+        // in the record already being fetched — reading it costs nothing.
+        const yarn = await yarnShow(id);
+        const photoUrl = catalogPhoto(yarn);
+        const fibers = fiberLine(yarn);
+        const fetchedAt = Date.now();
 
         db.insert(yarnPhotos)
-          .values({ yarnId: id, photoUrl: url, fetchedAt: Date.now() })
+          .values({ yarnId: id, photoUrl, fibers, fetchedAt })
           .onConflictDoUpdate({
             target: yarnPhotos.yarnId,
-            set: { photoUrl: url, fetchedAt: Date.now() },
+            set: { photoUrl, fibers, fetchedAt },
           })
           .run();
       } catch {

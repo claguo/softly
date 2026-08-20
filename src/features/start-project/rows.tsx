@@ -18,6 +18,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Badge } from '@/components/ui/badge';
 import { FilterChip } from '@/components/ui/filter-chip';
 import { PhotoFrame } from '@/components/ui/photo-frame';
+import { tintFor } from '@/data';
 import type { NeedleListRow, RavelryYarnSummary, StashListRow } from '@/data';
 import { decimal } from '@/features/detail/raw';
 import type { SizeOption } from '@/features/start-project/needle-sizes';
@@ -58,19 +59,33 @@ export function YarnChoice({
         styles.choice,
         {
           borderBottomColor: colors.hairline,
-          // Chosen and pressed read the same on purpose: the tint is what
-          // "this one" looks like, whether it is being said or already said.
-          backgroundColor: selected || pressed ? colors.brassTint : colors.surface,
+          // Chosen and pressed read the same on purpose: the sunk field is
+          // what "this one" looks like, whether it is being said or already
+          // said. The row is not the only thing saying it — the badge on the
+          // right says "chosen" in words — so the field can be quiet.
+          backgroundColor: selected || pressed ? colors.surfaceSunk : colors.surface,
         },
       ]}>
-      <PhotoFrame src={row.photoUrl ?? undefined} label="yarn" width={44} aspect="1/1" />
+      {/* The skein's own colour, the same as on Stash. This is the list a
+          knitter picks yarn off in the middle of casting on, so it is the one
+          place the colour earns its keep most: the row above and the row below
+          are the same photograph of the same yarn in a colourway that is not
+          theirs. `YarnResult` and `StagedYarn` below get none of this — those
+          are search results, not skeins, and have no colour to know. */}
+      <PhotoFrame
+        src={row.photoUrl ?? undefined}
+        tint={tintFor(row.colorHex, row.colorFamilyId)}
+        label="yarn"
+        width={44}
+        aspect="1/1"
+      />
 
       <View style={styles.choiceBody}>
         <Text numberOfLines={1} style={[styles.choiceName, { color: colors.ink }]}>
           {title}
         </Text>
         {subtitle === '' ? null : (
-          <Text numberOfLines={1} style={[styles.choiceMeta, { color: colors.ink3 }]}>
+          <Text numberOfLines={1} style={[styles.choiceMeta, { color: colors.ink2 }]}>
             {subtitle}
           </Text>
         )}
@@ -109,36 +124,39 @@ export function NeedleChoice({
         styles.choice,
         {
           borderBottomColor: colors.hairline,
-          backgroundColor: selected || pressed ? colors.brassTint : colors.surface,
+          backgroundColor: selected || pressed ? colors.surfaceSunk : colors.surface,
         },
       ]}>
       {/* `NeedleRow` fills the swatch to mean free and sinks it to mean tied
           up. Here the row itself carries the state, so the swatch inverts:
-          sunk while the needle is just sitting there, lifted off the tint and
-          edged in brass once it is going into this project. */}
+          sunk while the needle is just sitting there, lifted clear of the sunk
+          row once it is going into this project. With no hue to spend, the
+          selected swatch is drawn instead — full-strength ink on the ring and
+          on the numeral against a hairline and `ink2` at rest. That is a
+          bigger step than the old colour change was, not a smaller one. */}
       <View
         style={[
           styles.swatch,
           {
             backgroundColor: selected ? colors.surface : colors.surfaceSunk,
-            borderColor: selected ? colors.brass : colors.hairline,
+            borderColor: selected ? colors.ink : colors.hairline,
           },
         ]}>
-        <Text style={[styles.swatchSize, { color: selected ? colors.brass : colors.ink3 }]}>
+        <Text style={[styles.swatchSize, { color: selected ? colors.ink : colors.ink2 }]}>
           {size}
         </Text>
-        <Text style={[styles.swatchUnit, { color: colors.ink3 }]}>mm</Text>
+        <Text style={[styles.swatchUnit, { color: colors.ink2 }]}>mm</Text>
       </View>
 
       <View style={styles.choiceBody}>
         <Text numberOfLines={1} style={[styles.choiceName, { color: colors.ink }]}>
           {kind}
           {row.sizeUs === null ? null : (
-            <Text style={[styles.choiceUs, { color: colors.ink3 }]}> · US {row.sizeUs}</Text>
+            <Text style={[styles.choiceUs, { color: colors.ink2 }]}> · US {row.sizeUs}</Text>
           )}
         </Text>
         {row.lengthLabel === null ? null : (
-          <Text numberOfLines={1} style={[styles.choiceMeta, { color: colors.ink3 }]}>
+          <Text numberOfLines={1} style={[styles.choiceMeta, { color: colors.ink2 }]}>
             {row.lengthLabel}
           </Text>
         )}
@@ -156,18 +174,31 @@ export function NeedleChoice({
  * is told is chosen — and so are the words, because "loading" means something
  * different on a row that was just opened than on a sheet that opened on it.
  *
- * `notice` stands in for the chips before they land: one stamped line where
- * the grid would be, slate when the table could not be reached at all.
+ * `notice` stands in for the chips before they land: one stamped line where the
+ * grid would be. Waiting is not a state, so it reads in ink like any other
+ * quiet line; unreachable is, so it takes `aqua`, the hue this app gives to
+ * anything it could not get to the network for.
  */
 export function SizeGrid({
   options,
   selected,
   notice,
+  unruled = false,
   onPress,
 }: {
   options: readonly SizeOption[];
   selected: readonly string[];
   notice?: { readonly line: string; readonly unavailable?: boolean };
+  /**
+   * Ends the grid where its chips end: no closing hairline, and none of the
+   * clearance that only ever existed to hold the last row off one. The needle
+   * sheets ask for this because their sections are held apart by space rather
+   * than by rules — a grid still carrying the rule's clearance would sit 12pt
+   * further from what follows it than every other field on the sheet. Cast on
+   * does not set it: the grid is one item in a ruled list there, and the rule
+   * is what ends it.
+   */
+  unruled?: boolean;
   onPress: (key: string) => void;
 }) {
   const { colors } = useTheme();
@@ -175,13 +206,14 @@ export function SizeGrid({
   const waiting =
     notice === undefined ? null : (
       <Text
-        style={[styles.note, { color: notice.unavailable === true ? colors.slate : colors.ink3 }]}>
+        style={[styles.note, { color: notice.unavailable === true ? colors.aqua : colors.ink2 }]}>
         {notice.line}
       </Text>
     );
 
   return (
-    <View style={[styles.grid, { borderBottomColor: colors.hairline }]}>
+    <View
+      style={[styles.grid, unruled ? styles.unruled : { borderBottomColor: colors.hairline }]}>
       {options.length === 0
         ? waiting
         : options.map((option) => (
@@ -199,10 +231,10 @@ export function SizeGrid({
 
 /**
  * The quiet row that opens something: "Add a yarn", "All sizes", "Add by
- * name". Never brass — the one brass thing on a screen is that screen's own
- * action — so it is a hairline row in ink2 with a glyph saying which way it
- * goes, and an optional stamped note for what the knitter should know before
- * opening it.
+ * name". Never a filled button — a screen gets one of those, for the thing the
+ * screen is actually for — so it is a hairline row in ink2 with a glyph saying
+ * which way it goes, and an optional stamped note for what the knitter should
+ * know before opening it.
  *
  * `open` is what makes it a disclosure: given, the glyph is "+" or "−" and the
  * row says as much to a screen reader. Left off, the row is a way to somewhere
@@ -232,16 +264,16 @@ export function AddRow({
         styles.addRow,
         {
           borderBottomColor: colors.hairline,
-          backgroundColor: pressed ? colors.brassTint : colors.surface,
+          backgroundColor: pressed ? colors.surfaceSunk : colors.surface,
         },
       ]}>
       <Text style={[styles.addLabel, { color: open === true ? colors.ink : colors.ink2 }]}>
         {label}
       </Text>
       {note === undefined ? null : (
-        <Text style={[styles.note, { color: colors.ink3 }]}>{note}</Text>
+        <Text style={[styles.note, { color: colors.ink2 }]}>{note}</Text>
       )}
-      <Text style={[styles.addGlyph, { color: colors.ink3 }]}>{glyph}</Text>
+      <Text style={[styles.addGlyph, { color: colors.ink2 }]}>{glyph}</Text>
     </Pressable>
   );
 }
@@ -273,7 +305,7 @@ export function YarnResult({
         styles.choice,
         {
           borderBottomColor: colors.hairline,
-          backgroundColor: pressed ? colors.brassTint : colors.surface,
+          backgroundColor: pressed ? colors.surfaceSunk : colors.surface,
         },
       ]}>
       <PhotoFrame src={yarnPhoto(yarn)} label="yarn" width={44} aspect="1/1" />
@@ -283,7 +315,7 @@ export function YarnResult({
           {title}
         </Text>
         {meta === '' ? null : (
-          <Text numberOfLines={1} style={[styles.choiceMeta, { color: colors.ink3 }]}>
+          <Text numberOfLines={1} style={[styles.choiceMeta, { color: colors.ink2 }]}>
             {meta}
           </Text>
         )}
@@ -313,7 +345,7 @@ export function StagedYarn({
         styles.choice,
         {
           borderBottomColor: colors.hairline,
-          backgroundColor: pressed ? colors.brassTint : colors.surface,
+          backgroundColor: pressed ? colors.surfaceSunk : colors.surface,
         },
       ]}>
       <PhotoFrame src={yarnPhoto(yarn)} label="yarn" width={44} aspect="1/1" />
@@ -323,13 +355,13 @@ export function StagedYarn({
           {title}
         </Text>
         {meta === '' ? null : (
-          <Text numberOfLines={1} style={[styles.choiceMeta, { color: colors.ink3 }]}>
+          <Text numberOfLines={1} style={[styles.choiceMeta, { color: colors.ink2 }]}>
             {meta}
           </Text>
         )}
       </View>
 
-      <Text style={[styles.clear, { color: colors.ink3 }]}>×</Text>
+      <Text style={[styles.clear, { color: colors.ink2 }]}>×</Text>
     </Pressable>
   );
 }
@@ -423,6 +455,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.s4,
     paddingVertical: space.s3,
     borderBottomWidth: 1,
+  },
+  unruled: {
+    borderBottomWidth: 0,
+    paddingBottom: 0,
   },
   /** The stamped line a row carries, for somewhere already padded. */
   note: {

@@ -13,14 +13,17 @@
  *
  * The photograph is optional and the two ways to get one are quiet, because
  * neither is the decision this screen is about. The camera asks the system for
- * permission the moment it is tapped; a refusal is a slate line under the frame
+ * permission the moment it is tapped; a refusal is an aqua line under the frame
  * and nothing else — no alert, no red, no second asking. See
  * `@/features/finish/photo`.
  *
- * The brass at the bottom is the whole flow: `finishProject` uploads the
+ * The action at the bottom is the whole flow: `finishProject` uploads the
  * picture, marks the project finished, and brings the mirror level, reporting
  * rather than throwing. Three outcomes reach this screen and two of them leave
- * it. A finish that landed dismisses to the project, which now says Finished. A
+ * it. A finish that landed dismisses to the project, which now says Finished —
+ * that screen reads its row live, so the badge turns over underneath this modal
+ * rather than waiting for the knitter to back out and come in again; see
+ * `useProject`. A
  * finish that landed *without* the photograph dismisses too: the project is
  * done, which is the thing that mattered, and the project screen showing no
  * photograph is a truer report than a modal lingering over a write that already
@@ -47,7 +50,7 @@ import { fonts, space, trackMicro, type, useTheme } from "@/theme";
 
 const NOTICES: Record<FinishProblem, string> = {
   failed: "Couldn't finish the project.",
-  // Slate, not clay: nothing went wrong, the request simply never left — and
+  // Aqua, not mustard: nothing went wrong, the request simply never left — and
   // nothing was written, so the same tap works later.
   offline: "You're offline · try again later.",
   signedOut: "Sign in on the You tab to finish a project.",
@@ -179,7 +182,7 @@ export default function FinishScreen() {
       <BackBar />
 
       {row === null ? (
-        <Text style={[styles.unavailable, { color: colors.ink3 }]}>
+        <Text style={[styles.unavailable, { color: colors.ink2 }]}>
           Project unavailable.
         </Text>
       ) : (
@@ -189,7 +192,7 @@ export default function FinishScreen() {
               <PhotoFrame src={file?.uri} label="the finished object" aspect="4/5" />
             </View>
 
-            {/* Under the frame and quiet: the brass at the bottom is the thing
+            {/* Under the frame and quiet: the action at the bottom is the thing
                 to do here, and a photograph is not the decision. */}
             <View style={styles.picks}>
               <View style={styles.actions}>
@@ -222,7 +225,7 @@ export default function FinishScreen() {
               </View>
 
               {photoNotice === null ? null : (
-                <Text style={[styles.notice, { color: colors.slate }]}>{photoNotice}</Text>
+                <Text style={[styles.notice, { color: colors.aqua }]}>{photoNotice}</Text>
               )}
             </View>
 
@@ -247,7 +250,7 @@ export default function FinishScreen() {
                 </View>
               )}
 
-              <Text style={[styles.date, { color: colors.ink3 }]}>{stampedDate(now)}</Text>
+              <Text style={[styles.date, { color: colors.ink2 }]}>{stampedDate(now)}</Text>
             </View>
           </ScrollView>
 
@@ -262,7 +265,7 @@ export default function FinishScreen() {
             ]}
           >
             {busy ? (
-              <Text style={[styles.stamp, { color: colors.ink3 }]}>Finishing…</Text>
+              <Text style={[styles.stamp, { color: colors.ink2 }]}>Finishing…</Text>
             ) : problem === "signedOut" ? (
               <Text style={[styles.invitation, { color: colors.ink2 }]}>
                 {NOTICES.signedOut}
@@ -271,24 +274,27 @@ export default function FinishScreen() {
               <Text
                 style={[
                   styles.stamp,
-                  { color: problem === "offline" ? colors.slate : colors.clay },
+                  { color: problem === "offline" ? colors.aqua : colors.mustard },
                 ]}
               >
                 {NOTICES[problem]}
               </Text>
             ) : null}
 
-            {/* The one brass thing on this screen, and the last one this
+            {/* The one action on this screen, and the last one this
                 project will ever need. */}
             <Button
               variant="primary"
               size="lg"
               full
               disabled={busy}
-              accessibilityLabel={`Add ${name} to your finished work`}
+              // One word on the button, the project's name in the ear: a
+              // screen reader announcing "Finish" alone would not say which
+              // sweater, and this is the one tap that cannot be taken back.
+              accessibilityLabel={`Finish ${name}`}
               onPress={finish}
             >
-              Add to finished work
+              Finish
             </Button>
           </View>
         </>

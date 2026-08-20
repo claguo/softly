@@ -132,7 +132,7 @@ function Strip({ label, value, bandAt, onChange, disabled }: StripProps) {
 
   return (
     <View style={styles.strip}>
-      <Text style={[styles.stripLabel, { color: colors.ink3 }]}>{label}</Text>
+      <Text style={[styles.stripLabel, { color: colors.ink2 }]}>{label}</Text>
 
       <View
         onLayout={onLayout}

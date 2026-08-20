@@ -272,6 +272,13 @@ function toStashRow(record: RavelryRecord, syncedAt: number): StashInsert | null
     yardsTotal: firstNumber(record, [
       ['yards_available'],
       ['total_yards'],
+      // Where it actually is when the knitter has recorded a quantity: the
+      // top-level spellings above are absent from every stash record this app
+      // has seen, and the figure lives on the pack. Kept after them anyway —
+      // they cost nothing and this endpoint is undocumented enough that a
+      // field which is missing today is not a field that never existed.
+      ['primary_pack', 'total_yards'],
+      ['packs', '0', 'total_yards'],
       ['yardage_available'],
       ['yardage'],
     ]),

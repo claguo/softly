@@ -1,7 +1,7 @@
 /**
  * Add a needle — the one thing this app writes down for itself.
  *
- * Every other write in Soft Goods goes to Ravelry and comes back through the
+ * Every other write in Softly goes to Ravelry and comes back through the
  * mirror. This one cannot. Ravelry has three needle endpoints — the account's
  * own drawer, the size table, the type table — and not one of them writes, so
  * a needle bought this afternoon has nowhere to be recorded but here. That is
@@ -9,8 +9,9 @@
  * everywhere in the app, drawn no differently from one Ravelry handed back.
  *
  * It is `add-yarn`'s shell, because it is `add-yarn`'s kind of decision: a
- * sheet, one thing to do, said once at the bottom in brass. What is inside is
- * shorter, because a needle is three facts and only one of them is required.
+ * sheet, one thing to do, said once at the bottom as the action. What is
+ * inside is shorter, because a needle is three facts and only one of them is
+ * required.
  *
  * - **Size**, from Ravelry's own 54-row table — the same chips Cast on unfolds
  *   under "All sizes", drawn by the same `SizeGrid`. Nothing else will do: a
@@ -244,7 +245,7 @@ export default function AddNeedleScreen() {
         },
       ]}
     >
-      <BackBar />
+      <BackBar title="Add a needle" />
 
       <KeyboardAvoidingView
         style={styles.screen}
@@ -255,16 +256,14 @@ export default function AddNeedleScreen() {
           keyboardDismissMode="on-drag"
           contentContainerStyle={styles.content}
         >
-          <View style={styles.block}>
-            <Text style={[styles.title, { color: colors.ink }]}>Add a needle</Text>
-          </View>
-
-          <View style={[styles.ruled, { borderTopColor: colors.hairline }]}>
-            <View style={styles.opening}>
-              <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>Size</Text>
+          {/* No gap on this block: the grid pads itself off the label above
+              it, and it is the same 12 the rail below takes from `stack`. */}
+          <View>
+            <View style={styles.field}>
+              <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>Size</Text>
             </View>
-            {/* The grid closes the section with its own hairline. */}
             <SizeGrid
+              unruled
               options={sizes}
               selected={chosen === null ? NOTHING : [chosen.key]}
               notice={{
@@ -277,9 +276,9 @@ export default function AddNeedleScreen() {
             />
           </View>
 
-          <View style={[styles.stack, { borderBottomColor: colors.hairline }]}>
+          <View style={styles.stack}>
             <View style={styles.field}>
-              <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>Type</Text>
+              <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>Type</Text>
             </View>
             <ScrollView
               horizontal
@@ -299,8 +298,8 @@ export default function AddNeedleScreen() {
             </ScrollView>
           </View>
 
-          <View style={[styles.panel, { borderBottomColor: colors.hairline }]}>
-            <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>Length</Text>
+          <View style={styles.field}>
+            <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>Length</Text>
             <TextField
               value={length}
               onChangeText={setLength}
@@ -328,14 +327,14 @@ export default function AddNeedleScreen() {
               a write that cannot say what happened to it is worse than one
               whose worst line is rarely read. */}
           {saving ? (
-            <Text style={[styles.stamp, { color: colors.ink3 }]}>Adding…</Text>
+            <Text style={[styles.stamp, { color: colors.ink2 }]}>Adding…</Text>
           ) : failed ? (
-            <Text style={[styles.stamp, { color: colors.clay }]}>
+            <Text style={[styles.stamp, { color: colors.mustard }]}>
               Couldn&apos;t add the needle.
             </Text>
           ) : null}
 
-          {/* The one brass thing on this screen. */}
+          {/* The one action on this screen. */}
           <Button
             variant="primary"
             size="lg"
@@ -353,19 +352,15 @@ export default function AddNeedleScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { paddingBottom: space.s6 },
-  block: {
-    paddingHorizontal: space.s4,
-    paddingVertical: space.s5,
-    gap: space.s2,
-  },
-  ruled: { borderTopWidth: 1 },
-  title: {
-    // 28, the screen-title size, with the leading opened past `type.title`'s
-    // 30 for the same reason every other display line in the app opens it.
-    fontFamily: fonts.display,
-    fontSize: 28,
-    lineHeight: 32,
+  content: {
+    // What used to divide one field from the next is this gap and not a rule:
+    // the field draws its own box now, and a hairline outside it would be a
+    // second edge saying the same thing. 32 rather than the 24 the ruled
+    // rhythm came to, because without the line 24 reads as one group and not
+    // two. The two yarn sheets are measured the same, on purpose.
+    gap: space.s8,
+    paddingTop: space.s3,
+    paddingBottom: space.s6,
   },
   fieldLabel: {
     fontFamily: fonts.ui,
@@ -373,28 +368,14 @@ const styles = StyleSheet.create({
     lineHeight: type.micro.lineHeight,
     letterSpacing: trackMicro,
   },
-  panel: {
-    paddingHorizontal: space.s4,
-    paddingVertical: space.s3,
-    gap: space.s2,
-    borderBottomWidth: 1,
-  },
-  // Like `panel`, but for a block whose rail has to reach both edges.
-  stack: {
-    paddingVertical: space.s3,
-    gap: space.s3,
-    borderBottomWidth: 1,
-  },
+  // One thing the sheet asks for: its label and the control under it.
   field: {
     paddingHorizontal: space.s4,
     gap: space.s2,
   },
-  // A label whose block has no padding of its own, because what follows it —
-  // the size grid — carries its own.
-  opening: {
-    paddingHorizontal: space.s4,
-    paddingTop: space.s3,
-  },
+  // Like `field`, but for the block whose rail has to reach both edges, so the
+  // inset moves off the block and onto the label inside it.
+  stack: { gap: space.s3 },
   rail: {
     // 17 rather than 16: every chip is `flush`, which pulls it 1px left to
     // share its neighbour's border, and the first chip has no neighbour.

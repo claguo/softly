@@ -2,7 +2,9 @@
  * The offline-first data layer.
  *
  * Screens want `useFavorites`/`useStash`/`useNeedles`/`useProjects` for what
- * is already on the device, `getProjectById`/`getStashById`/
+ * is already on the device, `useProject`/`useProjectDetail`/`useStashEntry` for
+ * one row that has to redraw when a write lands under the screen holding it,
+ * `getProjectById`/`getStashById`/
  * `getFavoriteByPatternId` for one cached row whole, `syncAll` plus
  * `useSyncStatus` for refreshing it, and `patternsSearch`/`patternShow`/
  * `yarnsSearch` for the things that only exist online. `createProject` and
@@ -11,13 +13,17 @@
  * mirror itself, because the needle drawer is the one thing Ravelry will not
  * be told about. `finishProject` is the other end of the same story — the
  * photograph, the status and the refresh in one call that reports rather than
- * throws. `db` and the tables are here for anything that needs a query this
- * module has not thought of yet.
+ * throws. `ensureProjectDetail` fetches the half of a project `list.json`
+ * leaves out — the yarn it ate, the needles it tied up, the notes on it — and
+ * keeps it on the device. `db` and the tables are here for anything that needs
+ * a query this module has not thought of yet.
  *
  * Offline patterns are their own small chain: `usePatternPdf` for what is
- * already on the device, `probePatternLibrary` for whether one could be,
- * `ensurePatternPdf` and `addToLibraryAndDownload` for getting it there, and
- * `deletePatternPdf` for taking it away again.
+ * already on the device, `classifyPatternDownload` for whether Ravelry has the
+ * file at all, `probePatternLibrary` for whether one could be,
+ * `ensurePatternPdf` and `addToLibraryAndDownload` for getting it there,
+ * `importPatternPdf` for the far more common pattern whose PDF was never
+ * Ravelry's to send, and `deletePatternPdf` for taking it away again.
  *
  * Importing this opens the database and runs migrations.
  */
@@ -40,6 +46,7 @@ export {
   PAGE_SIZE,
   patternShow,
   patternsSearch,
+  projectShow,
   RavelryApiError,
   requestUploadToken,
   stashEntryShow,
@@ -60,6 +67,7 @@ export {
   type ProjectUpdate,
   type QueryParams,
   type RavelryDownloadLink,
+  type RavelryDownloadLocation,
   type RavelryNeedleSize,
   type RavelryNeedleType,
   type RavelryPaginator,
@@ -88,15 +96,21 @@ export {
 
 export {
   addToLibraryAndDownload,
+  classifyPatternDownload,
   deletePatternPdf,
   ensurePatternPdf,
   getPatternPdf,
+  importPatternPdf,
   patternPdfDirectoryUri,
   probePatternLibrary,
   subscribeToPatternPdfs,
+  type ImportOutcome,
+  type ImportProblem,
   type LibraryProbe,
+  type PatternDownload,
   type PdfOutcome,
   type PdfProblem,
+  type PickedPdf,
 } from '@/data/pdfs';
 
 export {
@@ -130,6 +144,10 @@ export {
 
 export { fillStashPhotos, rememberYarnPhoto } from '@/data/yarn-photos';
 
+export { ensurePatternPhoto, getPatternPhoto } from '@/data/pattern-photos';
+
+export { ensureProjectDetail, getProjectDetail } from '@/data/project-detail';
+
 export {
   forgetYarnColor,
   getYarnColor,
@@ -146,6 +164,8 @@ export {
   useFavorites,
   useNeedles,
   usePatternPdf,
+  useProject,
+  useProjectDetail,
   useProjects,
   useStash,
   useSyncStatus,
@@ -161,7 +181,10 @@ export {
   favorites,
   needles,
   NEEDLE_SOURCES,
+  PATTERN_PDF_SOURCES,
   patternPdfs,
+  patternPhotos,
+  projectDetails,
   projects,
   stash,
   syncState,
@@ -171,6 +194,9 @@ export {
   type NeedleRow,
   type NeedleSource,
   type PatternPdfRow,
+  type PatternPdfSource,
+  type PatternPhotoRow,
+  type ProjectDetailRow,
   type ProjectRow,
   type StashRow,
   type SyncStateRow,

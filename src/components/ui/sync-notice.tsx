@@ -31,7 +31,7 @@ export function formatRelative(at: Date | number, now: Date | number = Date.now(
 export function SyncNotice({ state, pendingCount, lastSyncedAt }: SyncNoticeProps) {
   const { colors } = useTheme();
 
-  const tone = state === 'synced' ? colors.spruce : colors.slate;
+  const tone = state === 'synced' ? colors.spruce : colors.aqua;
   const text =
     state === 'offline'
       ? 'offline · readable'

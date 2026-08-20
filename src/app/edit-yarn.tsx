@@ -71,7 +71,7 @@ import { fonts, space, trackMicro, type, useTheme } from "@/theme";
 
 const NOTICES: Record<Problem, string> = {
   failed: "Couldn't save the changes.",
-  // Slate, not clay: nothing went wrong, the request simply never left.
+  // Aqua, not mustard: nothing went wrong, the request simply never left.
   offline: "You're offline · try again later.",
   signedOut: "Sign in on the You tab to edit yarn.",
 };
@@ -320,10 +320,10 @@ export default function EditYarnScreen() {
         },
       ]}
     >
-      <BackBar />
+      <BackBar title="Edit yarn" />
 
       {row === null ? (
-        <Text style={[styles.stamp, { color: colors.ink3 }]}>
+        <Text style={[styles.stamp, { color: colors.ink2 }]}>
           Yarn unavailable.
         </Text>
       ) : (
@@ -336,24 +336,17 @@ export default function EditYarnScreen() {
             keyboardDismissMode="on-drag"
             contentContainerStyle={styles.content}
           >
+            {/* The screen's name went up to the bar; this line did not follow
+                it, because the bar says which screen this is and only this says
+                which skein. */}
             <View style={styles.block}>
-              <Text style={[styles.title, { color: colors.ink }]}>Edit yarn</Text>
-              <Text style={[styles.note, { color: colors.ink3 }]}>{title}</Text>
+              <Text style={[styles.note, { color: colors.ink2 }]}>{title}</Text>
             </View>
 
             {hasDatabaseYarn ? null : (
-              <View
-                style={[
-                  styles.stack,
-                  styles.ruled,
-                  {
-                    borderTopColor: colors.hairline,
-                    borderBottomColor: colors.hairline,
-                  },
-                ]}
-              >
+              <>
                 <View style={styles.field}>
-                  <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>
+                  <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>
                     Name
                   </Text>
                   <TextField
@@ -367,7 +360,7 @@ export default function EditYarnScreen() {
 
                 <View style={styles.weights}>
                   <View style={styles.field}>
-                    <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>
+                    <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>
                       Weight
                     </Text>
                   </View>
@@ -395,20 +388,11 @@ export default function EditYarnScreen() {
                     ))}
                   </ScrollView>
                 </View>
-              </View>
+              </>
             )}
 
-            <View
-              style={[
-                styles.panel,
-                hasDatabaseYarn ? styles.ruled : null,
-                {
-                  borderTopColor: colors.hairline,
-                  borderBottomColor: colors.hairline,
-                },
-              ]}
-            >
-              <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>
+            <View style={styles.field}>
+              <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>
                 Colorway
               </Text>
               <TextField
@@ -420,9 +404,9 @@ export default function EditYarnScreen() {
               />
             </View>
 
-            <View style={[styles.stack, { borderBottomColor: colors.hairline }]}>
+            <View style={styles.stack}>
               <View style={styles.field}>
-                <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>
+                <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>
                   Colour
                 </Text>
               </View>
@@ -435,8 +419,8 @@ export default function EditYarnScreen() {
               />
             </View>
 
-            <View style={[styles.panel, { borderBottomColor: colors.hairline }]}>
-              <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>
+            <View style={styles.field}>
+              <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>
                 Dye lot
               </Text>
               <TextField
@@ -448,8 +432,8 @@ export default function EditYarnScreen() {
               />
             </View>
 
-            <View style={[styles.panel, { borderBottomColor: colors.hairline }]}>
-              <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>
+            <View style={styles.field}>
+              <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>
                 Location
               </Text>
               <TextField
@@ -461,9 +445,9 @@ export default function EditYarnScreen() {
               />
             </View>
 
-            <View style={[styles.stack, { borderBottomColor: colors.hairline }]}>
+            <View style={styles.stack}>
               <View style={styles.field}>
-                <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>
+                <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>
                   Status
                 </Text>
               </View>
@@ -485,8 +469,8 @@ export default function EditYarnScreen() {
               </ScrollView>
             </View>
 
-            <View style={[styles.panel, { borderBottomColor: colors.hairline }]}>
-              <Text style={[styles.fieldLabel, { color: colors.ink3 }]}>
+            <View style={styles.field}>
+              <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>
                 Notes
               </Text>
               <TextField
@@ -497,7 +481,7 @@ export default function EditYarnScreen() {
                 returnKeyType="done"
               />
               {notesOpened === null ? (
-                <Text style={[styles.note, { color: colors.slate }]}>
+                <Text style={[styles.note, { color: colors.aqua }]}>
                   Notes couldn&rsquo;t be loaded · they&rsquo;ll be left as they
                   are
                 </Text>
@@ -516,14 +500,14 @@ export default function EditYarnScreen() {
             ]}
           >
             {saving ? (
-              <Text style={[styles.stampLeft, { color: colors.ink3 }]}>
+              <Text style={[styles.stampLeft, { color: colors.ink2 }]}>
                 Saving…
               </Text>
             ) : problem !== null ? (
               <Text
                 style={[
                   styles.stampLeft,
-                  { color: problem === "failed" ? colors.clay : colors.slate },
+                  { color: problem === "failed" ? colors.mustard : colors.aqua },
                 ]}
               >
                 {NOTICES[problem]}
@@ -575,42 +559,35 @@ async function lookupWeight(permalink: string): Promise<number | null> {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { paddingBottom: space.s6 },
-  block: {
-    paddingHorizontal: space.s4,
-    paddingVertical: space.s5,
-    gap: space.s2,
+  content: {
+    // What used to divide one field from the next is this gap and not a rule:
+    // the field draws its own box now, and a hairline outside it would be a
+    // second edge saying the same thing. 32 rather than the 24 the ruled
+    // rhythm came to, because without the line 24 reads as one group and not
+    // two.
+    gap: space.s8,
+    // s3 at the top, not the s5 a run under a display line takes: one micro
+    // line is all that opens this one, and s5 under the bar's hairline hung it
+    // low.
+    paddingTop: space.s3,
+    paddingBottom: space.s6,
   },
-  ruled: { borderTopWidth: 1 },
-  title: {
-    // 28, the screen-title size, with the leading opened past `type.title`'s 30
-    // for the same reason every other display line in the app opens it.
-    fontFamily: fonts.display,
-    fontSize: 28,
-    lineHeight: 32,
-  },
+  // Which skein this is: inset like the fields below it, and nothing else.
+  block: { paddingHorizontal: space.s4 },
   fieldLabel: {
     fontFamily: fonts.ui,
     fontSize: type.small.fontSize,
     lineHeight: type.micro.lineHeight,
     letterSpacing: trackMicro,
   },
-  panel: {
-    paddingHorizontal: space.s4,
-    paddingVertical: space.s3,
-    gap: space.s2,
-    borderBottomWidth: 1,
-  },
-  // Like `panel`, but for a block whose rail or grid has to reach both edges.
-  stack: {
-    paddingVertical: space.s3,
-    gap: space.s3,
-    borderBottomWidth: 1,
-  },
+  // One thing the sheet asks for: its label and the control under it.
   field: {
     paddingHorizontal: space.s4,
     gap: space.s2,
   },
+  // Like `field`, but for the blocks whose rail or grid has to reach both
+  // edges, so the inset moves off the block and onto the label inside it.
+  stack: { gap: space.s3 },
   weights: { gap: space.s2 },
   rail: {
     // 17 rather than 16: every chip is `flush`, which pulls it 1px left to

@@ -55,8 +55,8 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
                   navigation.navigate(route.name);
                 }
               }}
-              style={[styles.button, on && { backgroundColor: colors.brass }]}>
-              <TabGlyph shape={GLYPHS[route.name] ?? 'dot'} color={on ? colors.onBrass : colors.ink2} on={on} />
+              style={[styles.button, on && { backgroundColor: colors.action }]}>
+              <TabGlyph shape={GLYPHS[route.name] ?? 'dot'} color={on ? colors.onAction : colors.ink2} on={on} />
             </Pressable>
           );
         })}

@@ -8,9 +8,9 @@
  * `stashList`, `needlesList`, `projectsList`) walk every page up to
  * `MAX_RECORDS_PER_RESOURCE` and report whether they stopped early; they feed
  * the offline cache. `patternsSearch`, `patternShow`, `yarnsSearch`,
- * `librarySearch`, `volumeShow`, `getNeedleSizes`, `getNeedleTypes` and
- * `getYarnWeights` are single, online-only reads that go straight to the
- * caller asking for them. `createProject`, `createStashEntry`, `updateProject`,
+ * `librarySearch`, `volumeShow`, `projectShow`, `getNeedleSizes`,
+ * `getNeedleTypes` and `getYarnWeights` are single, online-only reads that go
+ * straight to the caller asking for them. `createProject`, `createStashEntry`, `updateProject`,
  * `createProjectPhoto`, `requestUploadToken`, `volumesCreate`, `volumesDelete`
  * and `generateDownloadLink` are the writes; all but the last three send a body.
  *
@@ -106,11 +106,32 @@ export type RavelryPatternSummary = {
   [key: string]: unknown;
 };
 
+/**
+ * Where a pattern's PDF actually is.
+ *
+ * `type` is `ravelry` when Ravelry hosts the file — the only case a library
+ * volume ever gets an attachment — and `external` when the designer does, in
+ * which case `url` is their page and `free` describes the price there rather
+ * than on Ravelry. Every field is optional and none is trusted: this arrives
+ * from an endpoint that spells things differently by the year, and
+ * `classifyPatternDownload` reads it defensively.
+ */
+export type RavelryDownloadLocation = {
+  type?: string | null;
+  free?: boolean | null;
+  url?: string | null;
+  [key: string]: unknown;
+};
+
 export type RavelryPatternDetail = RavelryPatternSummary & {
   photos?: RavelryPhoto[];
   notes?: string | null;
   /** Ravelry's own render of `notes`, with reference links already resolved. */
   notes_html?: string | null;
+  /** Ravelry has the file itself, so a library volume can be given one. */
+  ravelry_download?: boolean | null;
+  /** …and this is the same fact said longer, plus where else it might be. */
+  download_location?: RavelryDownloadLocation | null;
   yardage?: number | null;
   yardage_max?: number | null;
   yardage_description?: string | null;
@@ -380,6 +401,30 @@ export function needlesList(username: string): Promise<PagedRecords<RavelryRecor
 
 export function projectsList(username: string): Promise<PagedRecords<RavelryProject>> {
   return fetchAllPages<RavelryProject>(`/projects/${person(username)}/list.json`, 'projects');
+}
+
+/**
+ * One project as Ravelry has it, rather than as the mirror does.
+ *
+ * The list endpoint above is a summary. Verified against the live account on
+ * 2026-08-19: this is where `packs`, `needle_sizes`, `notes`, `private_notes`,
+ * `photos` and `tools` are, and none of them appear on `list.json` at all — so
+ * the yarn a project ate and the needles it tied up cost one request per
+ * project, and `project-detail.ts` is what keeps the answer.
+ */
+export async function projectShow(
+  username: string,
+  projectId: number,
+): Promise<RavelryProject> {
+  const path = `/projects/${person(username)}/${projectId}.json`;
+  const body = await authedFetch<{ project?: RavelryProject }>(path);
+  const project = body?.project;
+
+  if (!project) {
+    throw new RavelryApiError(0, path, 'Ravelry returned no project.');
+  }
+
+  return project;
 }
 
 export type PatternSearchParams = {

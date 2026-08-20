@@ -61,13 +61,20 @@ export const PatternCell = memo(function PatternCell({
       style={({ pressed }) => [
         styles.cell,
         { borderColor: colors.hairline },
-        pressed && onPress ? { backgroundColor: colors.brassTint } : null,
+        pressed && onPress ? { backgroundColor: colors.surfaceSunk } : null,
       ]}>
       <View>
         <PhotoFrame src={photo} label="pattern photo" aspect="4/5" />
         {saved ? (
+          // The heart is ink, not a colour. Colour in this app means one of
+          // three states — committed, wants attention, could not be reached —
+          // and "you favourited this on Ravelry" is none of them. It is a flag
+          // the knitter set, so it is drawn in the same ink everything else the
+          // knitter wrote is drawn in. The surface chip behind it is what lifts
+          // it off the photograph, and it has to, because ink and a photograph
+          // can land anywhere against each other.
           <View style={[styles.saved, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.savedGlyph, { color: colors.brass }]}>♥</Text>
+            <Text style={[styles.savedGlyph, { color: colors.ink }]}>♥</Text>
           </View>
         ) : null}
       </View>
@@ -77,7 +84,7 @@ export const PatternCell = memo(function PatternCell({
           {name}
         </Text>
         {meta ? (
-          <Text numberOfLines={1} style={[styles.meta, { color: colors.ink3 }]}>
+          <Text numberOfLines={1} style={[styles.meta, { color: colors.ink2 }]}>
             {meta}
           </Text>
         ) : null}

@@ -1,56 +1,83 @@
 /**
- * Soft Goods design tokens — a 1:1 translation of the design handoff's
- * styles.css everywhere except the accent ramp, which has since moved to cyan
- * and now diverges from the handoff. Art direction: square corners, hairlines
- * not shadows, sentence case (never all-caps), no monospace. The accent — still
- * named `brass` from its gold days — is the one action per screen; spruce =
- * committed; clay = attention; slate = offline/queued (never red).
+ * Softly design tokens. Art direction is unchanged: square corners,
+ * hairlines not shadows, sentence case (never all-caps), no monospace.
+ *
+ * There is no accent. `brass` is gone, and the primary action is the ground
+ * turned inside out — `action` is `ink`, `onAction` is `paper`. Light paper and
+ * dark ink are the same value, and light ink and dark `surfaceSunk` are the
+ * same value, so the two themes are one set of values folded in half rather
+ * than two palettes.
+ *
+ * `actionPressed` brightens in both themes, which is not what brass did. Light
+ * `ink` sits at 2.7% lightness — there is nothing below it to darken into — so
+ * pressed lifts 5.3 lightness points, exactly matching dark's lift from
+ * #F5F2EE to #FFFFFF.
+ *
+ * `ink3` is gone. It was #7E7669 at 4.09:1 in light, under the 4.5 floor for
+ * normal text, and it was being used at 11px. A light tertiary that both passes
+ * AA and reads genuinely quiet does not exist, so the system is two ink levels
+ * and hierarchy below `ink2` is carried by size and weight, not color.
+ *
+ * Color now means state and nothing else, links aside. `clay` is now `mustard`
+ * and `slate` is now `aqua`; the old names had stopped describing the colors.
+ * (`spruce` keeps its name for now even though at 88° it is a chartreuse — that
+ * rename is still open.) The state tints are no longer near-paper washes but
+ * real color fields, and the marks that sit on them are near-black in light and
+ * near-white in dark.
+ *
+ * `link`/`linkPressed` are provisional. They sit at the mustard hue — 49.9°,
+ * within a tenth of a degree of `mustard` — so a link and an attention mark are
+ * the same color family, a real objection that has not been settled. The chosen
+ * values clear 4.5:1 on all three grounds in both themes, but in dark no value
+ * at this hue can both clear AA on a card and stay 3:1 clear of `ink`, so dark
+ * links must carry an underline or weight, never color alone. Light has a
+ * narrow window where color alone suffices.
  */
 
 export const palette = {
   light: {
-    paper: "#F7F4EE",
-    surface: "#FFFDF9",
-    surfaceSunk: "#EDE8DE",
-    ink: "#221E1A",
-    ink2: "#4C463D",
-    ink3: "#7E7669",
-    hairline: "rgba(34,30,26,0.12)",
-    hairlineStrong: "rgba(34,30,26,0.22)",
-    brass: "#147980",
-    brassPressed: "#106066",
-    brassTint: "#A8F9FF",
-    onBrass: "#F2FEFF",
-    spruce: "#2C5A4C",
-    spruceTint: "#DDE9E3",
-    clay: "#AE5233",
-    clayTint: "#F6E2D9",
-    slate: "#4A5A6B",
-    slateTint: "#E1E7ED",
+    paper: "#F5F2EE",
+    surface: "#FFFFFF",
+    surfaceSunk: "#E9E5DE",
+    ink: "#0D0601",
+    ink2: "#3C3129",
+    hairline: "rgba(13,6,1,0.11)",
+    hairlineStrong: "rgba(13,6,1,0.20)",
+    action: "#0D0601",
+    actionPressed: "#261103",
+    onAction: "#F5F2EE",
+    link: "#726213",
+    linkPressed: "#584B0E",
+    spruce: "#1C2F07",
+    spruceTint: "#9FAE87",
+    mustard: "#473D0B",
+    mustardTint: "#CCBC2E",
+    aqua: "#04323E",
+    aquaTint: "#92F0EE",
     photoA: "#E6DFD2",
     photoB: "#DCD3C3",
   },
   dark: {
-    paper: "#15120F",
-    surface: "#1E1A16",
-    surfaceSunk: "#100E0B",
-    ink: "#F3EEE5",
-    ink2: "#C8BFB1",
-    ink3: "#8E8577",
-    hairline: "rgba(243,238,229,0.13)",
-    hairlineStrong: "rgba(243,238,229,0.24)",
-    brass: "#27F1FF",
-    brassPressed: "#7DF7FF",
-    brassTint: "#0A3C40",
-    onBrass: "#062226",
-    spruce: "#79AD98",
-    spruceTint: "#1D2F28",
-    clay: "#D8825F",
-    clayTint: "#332016",
-    slate: "#9BB0C4",
-    slateTint: "#1B2229",
-    photoA: "#2A2521",
-    photoB: "#221E1A",
+    paper: "#1E1007",
+    surface: "#2A1E16",
+    surfaceSunk: "#0D0601",
+    ink: "#F5F2EE",
+    ink2: "#D0CBC1",
+    hairline: "rgba(245,242,238,0.13)",
+    hairlineStrong: "rgba(245,242,238,0.24)",
+    action: "#F5F2EE",
+    actionPressed: "#FFFFFF",
+    onAction: "#1E1007",
+    link: "#A68F1C",
+    linkPressed: "#C1A520",
+    spruce: "#ACE968",
+    spruceTint: "#454E35",
+    mustard: "#D8BA22",
+    mustardTint: "#453F10",
+    aqua: "#85E0F7",
+    aquaTint: "#0B3B3A",
+    photoA: "#362215",
+    photoB: "#2C1B11",
   },
 } as const;
 
@@ -60,16 +87,19 @@ export type Palette = {
   readonly [K in keyof (typeof palette)["light"]]: string;
 };
 
-/** Shippori Mincho carries all UI text across five real weights, so each slot is
- * its own cut and emphasis is drawn rather than synthesised; Yuji Mai is
- * display-only (≥20px). */
+/** Solway carries all UI text across five real weights, so each slot is still its
+ * own cut and emphasis is drawn rather than synthesised; Yuji Mai is display-only
+ * (≥20px). The slot names no longer describe their cuts: body starts at Light, so
+ * every slot shifts down a rung and `uiMedium` renders Regular 400 while
+ * `uiSemiBold` renders Medium 500. Solway ships no 600, which is why the shift
+ * absorbs cleanly rather than stranding a weight. */
 export const fonts = {
   display: "YujiMai_400Regular",
-  ui: "ShipporiMincho_400Regular",
-  uiMedium: "ShipporiMincho_500Medium",
-  uiSemiBold: "ShipporiMincho_600SemiBold",
-  uiBold: "ShipporiMincho_700Bold",
-  uiExtraBold: "ShipporiMincho_800ExtraBold",
+  ui: "Solway_300Light",
+  uiMedium: "Solway_400Regular",
+  uiSemiBold: "Solway_500Medium",
+  uiBold: "Solway_700Bold",
+  uiExtraBold: "Solway_800ExtraBold",
 } as const;
 
 /** Sizes in pt; line heights precomputed (RN wants absolute lineHeight). */

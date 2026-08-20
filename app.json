@@ -1,21 +1,20 @@
 {
   "expo": {
-    "name": "soft-goods",
-    "slug": "soft-goods",
+    "name": "Softly",
+    "slug": "softly",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "softgoods",
+    "scheme": "softly",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.claire-stardrift.soft-goods"
+      "bundleIdentifier": "tools.softly.app"
     },
     "android": {
+      "package": "tools.softly.app",
       "adaptiveIcon": {
-        "backgroundColor": "#F7F4EE",
+        "backgroundColor": "#DAC835",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
@@ -40,8 +39,8 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Soft Goods uses the camera to photograph a finished project.",
-          "photosPermission": "Soft Goods uses your photos to add one to a finished project.",
+          "cameraPermission": "Softly uses the camera to photograph a finished project.",
+          "photosPermission": "Softly uses your photos to add one to a finished project.",
           "microphonePermission": false
         }
       ]

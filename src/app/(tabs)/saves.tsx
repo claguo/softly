@@ -37,6 +37,12 @@ const SavedItem = memo(function SavedItem({ row }: { row: FavoriteListRow }) {
       // `free` is only true when Ravelry said so; false and unknown both stay
       // silent rather than stamping a price this app does not have.
       price={row.free === true ? "free" : undefined}
+      // Passed straight through, unlike `price`, because there is no unknown to
+      // be careful about: the PDF is on this device or it is not, and the query
+      // answers from the download table rather than from anything Ravelry sent.
+      // `inLibrary` is the one that would be a guess here, so it stays unset —
+      // nothing in the mirror records what the account owns.
+      offline={row.offline}
       onPress={
         patternId === null
           ? undefined
@@ -95,7 +101,7 @@ export default function SavesScreen() {
             <RefreshControl
               refreshing={sync.phase === "syncing"}
               onRefresh={onRefresh}
-              tintColor={colors.ink3}
+              tintColor={colors.ink2}
             />
           )
         }
@@ -105,7 +111,7 @@ export default function SavesScreen() {
               Sign in on the You tab to see the patterns you have saved.
             </Text>
           ) : sync.lastSyncedAt !== null ? (
-            <Text style={[styles.stamp, { color: colors.ink3 }]}>
+            <Text style={[styles.stamp, { color: colors.ink2 }]}>
               Nothing saved yet.
             </Text>
           ) : null

@@ -1,6 +1,6 @@
-# soft-goods-auth
+# softly-auth
 
-Vercel serverless broker for Soft Goods' Ravelry OAuth 2.0 login.
+Vercel serverless broker for Softly's Ravelry OAuth 2.0 login.
 
 Its only job is to hold the Ravelry **client secret** (which cannot ship inside a
 mobile app) and to broker the code/token exchange. It has no database, no
@@ -15,7 +15,7 @@ Zero runtime dependencies — Node built-ins and the global `fetch` only.
 1. App generates an opaque `state`, opens `GET /api/login?state=...` in a browser.
 2. Broker 302s to Ravelry's authorize page.
 3. User approves; Ravelry 302s to `GET /api/callback?code=...&state=...`.
-4. Broker 302s to `softgoods://auth?code=...&state=...` (deep link back into the app).
+4. Broker 302s to `softly://auth?code=...&state=...` (deep link back into the app).
 5. App verifies `state` matches, then `POST /api/token {code}` to get tokens.
 6. Later, `POST /api/refresh {refresh_token}` when the 24h access token expires.
 
@@ -27,7 +27,7 @@ to the custom-scheme URL.
 | Method | Path            | In                             | Out |
 | ------ | --------------- | ------------------------------ | --- |
 | GET    | `/api/login`    | `state` (required), `scope` (optional, default `offline library-pdf`) | 302 to Ravelry authorize; 400 if `state` missing |
-| GET    | `/api/callback` | `code` + `state`, or `error`   | 302 to `softgoods://auth?...` plus an HTML "Return to Soft Goods…" link fallback |
+| GET    | `/api/callback` | `code` + `state`, or `error`   | 302 to `softly://auth?...` plus an HTML "Return to Softly…" link fallback |
 | POST   | `/api/token`    | JSON `{ "code": "..." }`       | Ravelry's token JSON + upstream status; 400 if `code` missing |
 | POST   | `/api/refresh`  | JSON `{ "refresh_token": "..." }` | Ravelry's token JSON + upstream status; 400 if missing |
 
@@ -50,7 +50,7 @@ Set all three in the Vercel project (Production + Preview) — see `.env.example
 - `RAVELRY_CLIENT_ID`
 - `RAVELRY_CLIENT_SECRET`
 - `BASE_URL` — public origin of this deployment, no trailing slash
-  (e.g. `https://softgoods-auth.vercel.app`)
+  (e.g. `https://softly-auth.vercel.app`)
 
 If any is unset, every endpoint returns a generic `500` and logs the missing
 names server-side.
@@ -76,7 +76,7 @@ exactly, with no trailing slash:
 ${BASE_URL}/api/callback
 ```
 
-e.g. `https://softgoods-auth.vercel.app/api/callback`. It must match byte-for-byte
+e.g. `https://softly-auth.vercel.app/api/callback`. It must match byte-for-byte
 between the Ravelry app settings, `/api/login`, and `/api/token`, or the exchange
 fails. A preview deployment with a different `BASE_URL` needs its own registered
 redirect URI.

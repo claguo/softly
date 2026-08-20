@@ -120,8 +120,19 @@ export function ColorGrid({
                   backgroundColor: active && tuned !== null ? tuned : family.swatch,
                   // Every swatch is ringed, or the pale ones — White, Natural —
                   // would have no edge at all against the paper. The chosen one
-                  // takes brass and a heavier ring; the rest take the hairline.
-                  borderColor: active ? colors.brass : colors.hairline,
+                  // takes a full-ink ring at double width; the rest take the
+                  // hairline. Ink rather than a hue because the swatches are
+                  // already twenty colours, and a twenty-first competing with
+                  // them is how you end up unable to find the ring at all.
+                  //
+                  // The cost, stated plainly: ink is one of the twenty. A ring
+                  // on Black in light, or on White and Natural in dark, is very
+                  // nearly the swatch's own paint, and the tuner can move any
+                  // active swatch to that same place. The name under the grid
+                  // says which family is chosen in words, which is what the
+                  // knitter actually falls back on when the ring goes quiet —
+                  // but the ring alone does not carry every one of the twenty.
+                  borderColor: active ? colors.ink : colors.hairline,
                   borderWidth: active ? 2 : 1,
                   opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
                 },
@@ -133,7 +144,7 @@ export function ColorGrid({
 
       <View style={styles.nameRow}>
         <Text
-          style={[styles.name, { color: chosen === null ? colors.ink3 : colors.ink2 }]}>
+          style={[styles.name, { color: colors.ink2 }]}>
           {chosen === null
             ? 'No colour chosen'
             : hex === null
@@ -148,7 +159,7 @@ export function ColorGrid({
             onPress={clear}
             hitSlop={{ top: space.s2, bottom: space.s2, left: space.s2, right: space.s2 }}>
             {({ pressed }) => (
-              <Text style={[styles.clear, { color: pressed ? colors.ink : colors.ink3 }]}>
+              <Text style={[styles.clear, { color: pressed ? colors.ink : colors.ink2 }]}>
                 Clear
               </Text>
             )}

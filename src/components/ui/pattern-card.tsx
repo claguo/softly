@@ -44,7 +44,7 @@ export function PatternCard({
         {inLibrary ? <Badge tone="library">in library</Badge> : null}
         {offline ? (
           <Badge tone="offline" dot>
-            offline
+            downloaded
           </Badge>
         ) : null}
         {price ? <Badge tone="neutral">{price}</Badge> : null}
@@ -52,7 +52,7 @@ export function PatternCard({
     ) : null;
 
   const designerLine = designer ? (
-    <Text numberOfLines={1} style={[styles.designer, { color: colors.ink3 }]}>
+    <Text numberOfLines={1} style={[styles.designer, { color: colors.ink2 }]}>
       {designer}
     </Text>
   ) : null;
@@ -66,7 +66,7 @@ export function PatternCard({
         style={({ pressed }) => [
           styles.list,
           { borderColor: colors.hairline },
-          pressed && onPress ? { backgroundColor: colors.brassTint } : null,
+          pressed && onPress ? { backgroundColor: colors.surfaceSunk } : null,
         ]}
       >
         <PhotoFrame src={photo} label="pattern" width={72} aspect="1/1" />
@@ -93,9 +93,12 @@ export function PatternCard({
     >
       <View>
         <PhotoFrame src={photo} label="pattern photo" aspect="4/5" />
+        {/* Ink, not a colour: saving is something the knitter did, not one of
+            the three states the palette is reserved for. The glyph is already
+            the only heart on the screen, so shape carries it. */}
         {saved ? (
           <View style={[styles.saved, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.savedGlyph, { color: colors.brass }]}>♥</Text>
+            <Text style={[styles.savedGlyph, { color: colors.ink }]}>♥</Text>
           </View>
         ) : null}
       </View>
@@ -108,7 +111,7 @@ export function PatternCard({
         </Text>
         {designerLine}
         {meta ? (
-          <Text numberOfLines={1} style={[styles.meta, { color: colors.ink3 }]}>
+          <Text numberOfLines={1} style={[styles.meta, { color: colors.ink2 }]}>
             {meta}
           </Text>
         ) : null}
