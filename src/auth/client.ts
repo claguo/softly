@@ -26,8 +26,8 @@ const RAVELRY_API_URL = 'https://api.ravelry.com';
 const RETURN_URL = 'softly://auth';
 
 /** One key holds the whole session; there is no second source of truth. */
-// Legacy name kept deliberately: renaming it would sign out every existing install.
-const SESSION_KEY = 'softgoods.ravelry.session';
+// Renamed with the app (2026-08-19, pre-release, sole install was the developer's).
+const SESSION_KEY = 'softly.ravelry.session';
 
 /** Treat a token as expired this long before it actually is. */
 const EXPIRY_MARGIN_MS = 60_000;

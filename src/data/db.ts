@@ -26,8 +26,8 @@ import { openDatabaseSync, type SQLiteDatabase } from 'expo-sqlite';
 
 import { favorites, needles, patternPdfs, projects, stash, syncState, tables } from '@/data/schema';
 
-// Legacy name kept deliberately: renaming it would orphan every existing install's data.
-const DATABASE_NAME = 'softgoods.db';
+// Renamed with the app (2026-08-19, pre-release, sole install was the developer's).
+const DATABASE_NAME = 'softly.db';
 
 /**
  * Bump on a change to `schema.ts` that an existing database cannot satisfy by
