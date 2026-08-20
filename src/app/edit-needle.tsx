@@ -46,7 +46,7 @@ import {
   type SizeOption,
 } from "@/features/start-project/needle-sizes";
 import { SizeGrid } from "@/features/start-project/rows";
-import { fonts, space, trackMicro, type, useTheme } from "@/theme";
+import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 /** Nothing chosen, as a stable array: a new `[]` each render is a new prop. */
 const NOTHING: readonly string[] = [];
@@ -358,8 +358,8 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontFamily: fonts.ui,
     fontSize: type.small.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   // One thing the sheet asks for: its label and the control under it.
   field: {
@@ -381,9 +381,9 @@ const styles = StyleSheet.create({
   },
   stamp: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
     paddingHorizontal: space.s4,
   },
 });

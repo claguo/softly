@@ -24,7 +24,7 @@ import { BackBar } from "@/components/back-bar";
 import { Stamp } from "@/components/ui/stamp";
 import { getNeedleById } from "@/data";
 import { readId } from "@/features/detail/raw";
-import { fonts, radius, space, trackMicro, type, useTheme } from "@/theme";
+import { fonts, radius, space, trackSmall, type, useTheme } from "@/theme";
 
 /** Ravelry's needle kinds arrive lowercase ("circular", "hook"). Sentence case. */
 function sentence(value: string): string {
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui,
     fontSize: 10,
     lineHeight: 12,
-    letterSpacing: trackMicro,
+    letterSpacing: trackSmall,
     marginTop: 2,
   },
   title: {
@@ -178,9 +178,9 @@ const styles = StyleSheet.create({
   },
   stamp: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
     textAlign: "center",
     paddingTop: space.s10,
     paddingHorizontal: space.s4,

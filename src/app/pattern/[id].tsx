@@ -9,19 +9,41 @@
  * that will not load and was never saved is the only genuinely empty case, and
  * it says so in one line rather than a dialog.
  *
- * The screen has exactly one action, and it is the point of the screen:
- * "Start project", which only appears once there is a session to write with
- * and a pattern to write about.
+ * The action block is a row of two, and the first of them is still the point
+ * of the screen: "Start project", filled and twice the width, which only
+ * appears once there is a session to write with and a live pattern to write
+ * about — a project needs the craft, and only the live payload carries it.
+ * Beside it, "Save", which is the ♥ on the photo said as a control: it
+ * bookmarks the pattern on Ravelry, which is what fills the Saves tab.
+ *
+ * Save asks for less than Start project — a session and an id, no payload —
+ * and the row is drawn on the stricter condition anyway. The only pattern that
+ * satisfies the weaker one and not the stronger is a pattern showing from its
+ * cached bookmark, and a pattern with a cached bookmark is by definition
+ * already saved; a second gate would buy an inert "Saved" on a screen that
+ * already has the ♥ up, and nothing else.
+ *
+ * Starting a project saves the pattern too. Casting on says everything
+ * bookmarking says and more, and a knitter who did the first would have to be
+ * told why they still had to do the second. The write goes out and the route
+ * is pushed without waiting for it: the flow they asked for should not queue
+ * behind a round trip. A save that fails behind a departed screen fails
+ * silently, on purpose — there is nowhere honest left to report it, and the
+ * alternative is an alert about housekeeping on top of the screen they wanted.
  *
  * Under it is the Offline block, which is deliberately quiet. It is the
  * one place in the app that can put a pattern PDF on the phone, and it says
  * only what is true of this pattern right now: that the file is already here,
  * that the knitter owns the pattern and it could be, that the pattern is free
- * and could be both, or — for a paid pattern nobody has bought — that a
- * download would appear here if they owned it. There is no purchase flow
- * behind that last line and there will not be one; this app never sells.
- * Determining which line to draw costs one walk of the library per session
- * (see `pdfs.ts`), and costs nothing at all once the file is on the device.
+ * and could be both, or — for a paid pattern nobody has bought — what it costs
+ * and where to buy it. That last one used to be a dead end on the reasoning
+ * that this app never sells, which it still does not: the Buy control hands
+ * over to Ravelry's own purchase page in a browser, takes no money, and holds
+ * no card. What it stopped doing was pretending the page did not exist, which
+ * left a knitter looking at a pattern with no way to reach the one thing
+ * Ravelry offers them. Determining which line to draw costs one walk of the
+ * library per session (see `pdfs.ts`), and costs nothing at all once the file
+ * is on the device.
  *
  * One case answers before the library is asked anything, and outranks all of
  * them: a pattern whose PDF is on the designer's own site rather than
@@ -41,6 +63,21 @@
  * is the same file in the same folder as a downloaded one and every screen
  * treats it identically; only the stamped line here says which it was, because
  * where a pattern came from is worth knowing and nothing else about it is.
+ *
+ * Running under all of that, on every pattern, is "View on Ravelry". It is the
+ * only control here that is not conditional on anything, and it is the one that
+ * was missing: every other control in the block is about what can be *done*
+ * with the file, and on most patterns the answer is nothing much. Ravelry hosts
+ * the download for the great majority of them, which rules out the designer's
+ * link entirely — so a paid pattern the knitter does not own used to offer
+ * "Import a PDF" and no way to go and look at the pattern itself. The link is
+ * composed from the permalink rather than read from the payload, because the
+ * payload has no ravelry.com URL in it: `url` is the designer's site and
+ * `download_location.url` is wherever the file is. Neither is the pattern.
+ *
+ * Its presence is also why the block is no longer conditional on having
+ * something to say about a file. On a pattern with no download to offer it is
+ * now a label and one link, which is a good deal more use than nothing.
  */
 
 import { router, useLocalSearchParams } from "expo-router";
@@ -63,11 +100,13 @@ import {
   classifyPatternDownload,
   deletePatternPdf,
   ensurePatternPdf,
+  favoritesCreate,
   getFavoriteByPatternId,
   importPatternPdf,
   patternShow,
   probePatternLibrary,
   RavelryApiError,
+  refreshFavorites,
   usePatternPdf,
   type ImportProblem,
   type LibraryProbe,
@@ -81,12 +120,16 @@ import {
   firstNumber,
   firstString,
   isTrue,
+  parseRaw,
   readId,
   readNumber,
   readString,
 } from "@/features/detail/raw";
 import { hasNotes, RichText } from "@/features/detail/rich-text";
-import { fonts, space, trackMicro, type, useTheme } from "@/theme";
+// The three words every write in this app answers to, stated once beside Cast
+// on and borrowed here for the fourth: a bookmark fails the same three ways.
+import { triage, type Problem } from "@/features/start-project/problem";
+import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 type PatternState = {
   /** The request has answered, one way or the other. */
@@ -137,6 +180,23 @@ const IMPORT_NOTICES: Record<ImportProblem, string> = {
 };
 
 /**
+ * One quiet line per way a save can not happen.
+ *
+ * The same three words every write in this app answers to, and the same
+ * colours as the block below: aqua for a request that never left, mustard for
+ * one that did and came back wrong. Never red — nothing here is dangerous, and
+ * a bookmark that did not take is worth a sentence, not an alarm.
+ *
+ * `signedOut` is drawn even though the button needs a session to appear at
+ * all: the token can be refused between the frame that drew it and the tap.
+ */
+const SAVE_NOTICES: Record<Problem, string> = {
+  offline: "You're offline · try again later.",
+  signedOut: "Sign in on the You tab to save.",
+  failed: "Couldn't save this pattern.",
+};
+
+/**
  * The `external` line, in the block's own register: what is true, then what
  * follows from it. Not mustard — nothing has gone wrong, and the two controls
  * under it are the two halves of a next step that works.
@@ -145,7 +205,8 @@ const IMPORT_NOTICES: Record<ImportProblem, string> = {
  * only fetch. Now that a knitter can bring the file back themselves, saying so
  * would be the app refusing something it does in fact do.
  */
-const EXTERNAL_NOTICE = "PDF lives on the designer's site · save it there, then import it.";
+const EXTERNAL_NOTICE =
+  "PDF lives on the designer's site · save it there, then import it.";
 
 /**
  * `personal_attributes` only arrives on a request made with a person's token,
@@ -168,7 +229,10 @@ const HERO_KEYS = [
 
 function heroPhoto(pattern: RavelryPatternDetail): string | undefined {
   const photos = pattern.photos;
-  const candidates = [Array.isArray(photos) ? photos[0] : null, pattern.first_photo];
+  const candidates = [
+    Array.isArray(photos) ? photos[0] : null,
+    pattern.first_photo,
+  ];
 
   for (const candidate of candidates) {
     const url = firstString(candidate, HERO_KEYS);
@@ -178,6 +242,35 @@ function heroPhoto(pattern: RavelryPatternDetail): string | undefined {
   }
 
   return undefined;
+}
+
+/** http(s) only, trimmed, and null for the empty string Ravelry sends a lot of. */
+function webUrl(value: unknown): string | null {
+  const text = readString(value)?.trim() ?? null;
+
+  return text !== null && /^https?:\/\/\S/i.test(text) ? text : null;
+}
+
+/**
+ * "90 NOK", "6 USD".
+ *
+ * The amount arrives as a number on every payload seen and is typed as a
+ * string, so both are accepted. The currency is printed as Ravelry's own code
+ * rather than mapped to a symbol: these patterns are priced in DKK, NOK, CHF
+ * and USD, and a "$" in front of a Danish price would be a wrong answer where
+ * the code is merely a plain one.
+ */
+function priceLabel(amount: unknown, currency: unknown): string | null {
+  const value = readNumber(amount) ?? readNumber(readString(amount));
+
+  if (value === null || value <= 0) {
+    return null;
+  }
+
+  const code = readString(currency)?.trim() ?? null;
+  const shown = decimal(value);
+
+  return code === null || code === "" ? shown : `${shown} ${code}`;
 }
 
 function designerName(pattern: RavelryPatternDetail): string | null {
@@ -261,7 +354,26 @@ export default function PatternScreen() {
   // Kept apart from `busy`/`problem` above: those two are the Ravelry chain's,
   // and an import runs on neither the library nor the network.
   const [importing, setImporting] = useState(false);
-  const [importProblem, setImportProblem] = useState<ImportProblem | null>(null);
+  const [importProblem, setImportProblem] = useState<ImportProblem | null>(
+    null,
+  );
+
+  // The bookmark's own three, kept apart from both of the above for the same
+  // reason they are kept apart from each other: a save has nothing to do with
+  // a PDF, and one failure must never be drawn under the other's button.
+  const [saving, setSaving] = useState(false);
+  const [saveProblem, setSaveProblem] = useState<Problem | null>(null);
+  /**
+   * The bookmark this screen made itself.
+   *
+   * `cached` is read once, synchronously, when the screen opens, and a write
+   * that lands under it cannot make it read again — so without this the ♥
+   * would wait for a remount to appear, which is a sync at best and a relaunch
+   * at worst. Set the moment the POST answers rather than after the refresh
+   * below it: the bookmark exists on Ravelry at that point, and the mirror
+   * catching up is housekeeping the knitter should not have to watch.
+   */
+  const [savedNow, setSavedNow] = useState(false);
 
   useEffect(() => {
     // A route with no usable id asks Ravelry nothing; see `settled` below.
@@ -450,14 +562,17 @@ export default function PatternScreen() {
   const pattern = state.pattern;
   // A malformed id is answered without asking: there is nothing in flight.
   const settled = id === null || state.settled;
-  const attributes = pattern === null ? null : at(pattern, ["personal_attributes"]);
+  const attributes =
+    pattern === null ? null : at(pattern, ["personal_attributes"]);
 
   const name =
     (pattern === null ? null : readString(pattern.name)) ??
     cached?.name ??
     "Untitled pattern";
   const designer =
-    (pattern === null ? null : designerName(pattern)) ?? cached?.designer ?? null;
+    (pattern === null ? null : designerName(pattern)) ??
+    cached?.designer ??
+    null;
   const photo =
     (pattern === null ? undefined : heroPhoto(pattern)) ??
     cached?.photoUrl ??
@@ -465,8 +580,10 @@ export default function PatternScreen() {
   const free = pattern === null ? cached?.free === true : pattern.free === true;
 
   // A bookmark row on the device is proof on its own; `personal_attributes`
-  // is the answer for a pattern that was never synced into Saves.
-  const saved = cached !== null || isTrue(attributes, SAVED_KEYS);
+  // is the answer for a pattern that was never synced into Saves; and
+  // `savedNow` is the one this screen has just made, which neither of the
+  // other two can know about yet.
+  const saved = cached !== null || savedNow || isTrue(attributes, SAVED_KEYS);
   const inLibrary = isTrue(attributes, LIBRARY_KEYS);
   const queued = isTrue(attributes, QUEUED_KEYS);
 
@@ -475,7 +592,10 @@ export default function PatternScreen() {
       ? []
       : [
           { label: "yardage", value: yardage(pattern) },
-          { label: "weight", value: firstString(pattern, [["yarn_weight", "name"]]) },
+          {
+            label: "weight",
+            value: firstString(pattern, [["yarn_weight", "name"]]),
+          },
           { label: "needle", value: needleSizes(pattern) },
           { label: "gauge", value: gauge(pattern) },
         ].filter((fact) => fact.value !== null);
@@ -491,7 +611,91 @@ export default function PatternScreen() {
   // Only the live payload can be started from: the cached bookmark carries a
   // name and a photo, not the craft, and a project needs the pattern itself.
   const canStart = status === "signedIn" && pattern !== null && id !== null;
-  const craft = pattern === null ? null : firstString(pattern, [["craft", "permalink"]]);
+  const craft =
+    pattern === null ? null : firstString(pattern, [["craft", "permalink"]]);
+
+  /**
+   * The write itself: bookmark the pattern, then bring Saves level.
+   *
+   * Shared by both controls in the row, which want exactly the same thing from
+   * Ravelry and disagree only about what to do when it does not happen — so
+   * this throws whatever the call threw and leaves that decision upstairs. One
+   * has a line to draw under a button; the other has already left the screen.
+   *
+   * The refresh is awaited and its outcome ignored, the same bargain
+   * `finishProject` strikes: the Saves tab reads the mirror rather than the
+   * network, so the row has to be written there — but `refreshFavorites`
+   * reports rather than throwing, and a refresh that could not land has
+   * un-bookmarked nothing. The next full sync carries it.
+   */
+  const bookmark = useCallback(async (who: string, patternId: number) => {
+    await favoritesCreate(who, patternId);
+    setSavedNow(true);
+    await refreshFavorites(who);
+  }, []);
+
+  /**
+   * The Save button.
+   *
+   * Refuses a second attempt while one is in flight and refuses one entirely
+   * on a pattern that is already saved — this button does not un-save, and a
+   * duplicate bookmark is not something to find out about from Ravelry. Every
+   * attempt starts clean, so the last failure clears on retry.
+   */
+  const save = useCallback(() => {
+    if (id === null || username === null || saving || saved) {
+      return;
+    }
+
+    setSaving(true);
+    setSaveProblem(null);
+
+    void (async () => {
+      try {
+        await bookmark(username, id);
+      } catch (error) {
+        setSaveProblem(triage(error));
+      } finally {
+        setSaving(false);
+      }
+    })();
+  }, [bookmark, id, saved, saving, username]);
+
+  /**
+   * Start project, which saves on the way past.
+   *
+   * The save is started and then let go of: casting on is what was asked for,
+   * and making the knitter watch a bookmark round-trip before the flow opens
+   * would be charging them for a courtesy. Skipped outright when the pattern
+   * is already saved, and when there is no session to write with — `canStart`
+   * has already established there is one, so that second guard is only here
+   * because `username` is separately typed nullable.
+   *
+   * The failure is swallowed, and that is the decision rather than an
+   * oversight: by the time it comes back this screen is behind another one,
+   * and there is no honest place left to say so. Nothing was lost that the
+   * knitter cannot redo from the button they can see when they come back —
+   * which is why this deliberately does not touch `saving` on the way out.
+   * Borrowing that flag would put "Saving…" under the row for the length of
+   * the push animation, and would leave a knitter who came back to a failed
+   * save looking at a button too disabled to retry with.
+   */
+  const start = useCallback(() => {
+    if (id === null) {
+      return;
+    }
+
+    if (!saved && username !== null) {
+      void bookmark(username, id).catch(() => undefined);
+    }
+
+    router.push({
+      pathname: "/start-project",
+      // `undefined` is dropped from the link; a pattern with no craft simply
+      // arrives without one, and knits by default.
+      params: { patternId: id, patternName: name, craft: craft ?? undefined },
+    });
+  }, [bookmark, craft, id, name, saved, username]);
 
   /**
    * Which of the five things the Offline block has to say, or nothing.
@@ -517,7 +721,9 @@ export default function PatternScreen() {
         ? "external"
         : busy !== null
           ? busy
-          : probe === null || probe.kind === "unknown" || probe.kind === "downloaded"
+          : probe === null ||
+              probe.kind === "unknown" ||
+              probe.kind === "downloaded"
             ? null
             : probe.kind === "inLibrary"
               ? "download"
@@ -539,6 +745,68 @@ export default function PatternScreen() {
   const notice = offline === "external" ? null : problem;
 
   const externalUrl = download.kind === "external" ? download.url : null;
+
+  /**
+   * The pattern's own page on ravelry.com.
+   *
+   * Built rather than read, because the payload does not carry one. `url` is
+   * the *designer's* site when there is a designer's site, and null otherwise;
+   * `download_location.url` is wherever the file is. Neither is a link to the
+   * pattern. What every pattern does have is a `permalink`, and Ravelry's
+   * library URL is that permalink — so the link is composed from it.
+   *
+   * This is the control that had been missing, and its absence was loudest
+   * exactly where it was needed most. `ravelry_download` is true for the great
+   * majority of patterns, which makes `download.kind` `ravelry` and leaves
+   * `showExternalLink` false — so a paid pattern nobody here owns drew "Import
+   * a PDF" and no way to go and look at the thing. It also quietly covers the
+   * case that used to draw nothing at all: an external pattern whose URL did
+   * not survive `readWebUrl`.
+   *
+   * Falls back to the cached bookmark, so it is still a link offline — the
+   * permalink is in `favorites.raw` and does not change.
+   */
+  const permalink =
+    (pattern === null ? null : readString(pattern.permalink)) ??
+    firstString(parseRaw(cached?.raw), [
+      ["favorited", "permalink"],
+      ["permalink"],
+    ]);
+
+  const ravelryUrl =
+    permalink === null
+      ? null
+      : `https://www.ravelry.com/patterns/library/${encodeURIComponent(permalink)}`;
+
+  /**
+   * The two links Ravelry's own page has that this screen did not.
+   *
+   * Both are in the payload and both were being dropped on the floor:
+   *
+   * - **Where it is bought.** `download_location.url` is a `/purchase/` link
+   *   for a paid pattern and a `/dls/` one for a free pattern, and
+   *   `classifyPatternDownload` keeps it only for the `external` case — so for
+   *   the great majority of paid patterns, which Ravelry hosts itself, the URL
+   *   was read and thrown away. `free === false` is what separates the two,
+   *   rather than the shape of the path.
+   * - **The designer's own site.** `pattern.url`, which nothing here read. It
+   *   is the empty string as often as not, and on an external pattern it is
+   *   usually the same link the download block already offers — so it is
+   *   trimmed, scheme-checked, and dropped when it duplicates that one.
+   */
+  const location = pattern?.download_location ?? null;
+  const locationType = readString(location?.type)?.toLowerCase() ?? null;
+
+  const purchaseUrl =
+    location !== null && location.free === false && locationType !== "external"
+      ? webUrl(location.url)
+      : null;
+
+  const siteUrl = webUrl(pattern?.url);
+  const websiteUrl = siteUrl === externalUrl ? null : siteUrl;
+
+  /** "90 NOK", "6 USD" — the currency as Ravelry names it, never guessed at. */
+  const price = pattern === null ? null : priceLabel(pattern.price, pattern.currency);
 
   /**
    * Whether the block offers to take a file by hand.
@@ -567,12 +835,34 @@ export default function PatternScreen() {
   /** The Ravelry control this branch draws, if it has one to draw. */
   const showExternalLink = offline === "external" && externalUrl !== null;
   const showAcquire = offline === "download" || offline === "add";
+  /**
+   * Unconditional, unlike every other control in this block.
+   *
+   * The rest are drawn on what can be *done* about the file, and each of them
+   * is absent most of the time. Looking the pattern up is not that: it works on
+   * every pattern, whatever its download says, and it is the one thing a
+   * knitter can always fall back on when the block has nothing else to offer.
+   */
+  const showRavelryLink = ravelryUrl !== null;
+  /**
+   * Where to buy it, offered only when buying is the actual next step.
+   *
+   * Not on a pattern already downloaded, not on one the library says is owned —
+   * in both of those the knitter has bought it and a Buy button would be an
+   * insult with a price on it. `ask` is precisely the paid-and-unowned case, and
+   * it is the line this control belongs under.
+   */
+  const showPurchase = offline === "ask" && purchaseUrl !== null;
+  const showWebsite = websiteUrl !== null;
 
   const openPdf = useCallback(() => {
     if (id === null) {
       return;
     }
-    router.push({ pathname: "/pdf/[patternId]", params: { patternId: id, name } });
+    router.push({
+      pathname: "/pdf/[patternId]",
+      params: { patternId: id, name },
+    });
   }, [id, name]);
 
   /**
@@ -588,6 +878,37 @@ export default function PatternScreen() {
     }
     void WebBrowser.openBrowserAsync(externalUrl).catch(() => undefined);
   }, [externalUrl]);
+
+  /**
+   * Ravelry's own purchase page, in the in-app browser.
+   *
+   * The app takes no money and holds no card: this hands over to Ravelry, who
+   * sell the designer's pattern, exactly as their own page does. What comes
+   * back is a pattern in the knitter's library, which the block above already
+   * knows how to notice and download.
+   */
+  const openPurchase = useCallback(() => {
+    if (purchaseUrl === null) {
+      return;
+    }
+    void WebBrowser.openBrowserAsync(purchaseUrl).catch(() => undefined);
+  }, [purchaseUrl]);
+
+  /** The designer's own site — "visit pattern website" on Ravelry's page. */
+  const openWebsite = useCallback(() => {
+    if (websiteUrl === null) {
+      return;
+    }
+    void WebBrowser.openBrowserAsync(websiteUrl).catch(() => undefined);
+  }, [websiteUrl]);
+
+  /** The pattern on ravelry.com, in the same in-app browser and for the same reason. */
+  const openRavelry = useCallback(() => {
+    if (ravelryUrl === null) {
+      return;
+    }
+    void WebBrowser.openBrowserAsync(ravelryUrl).catch(() => undefined);
+  }, [ravelryUrl]);
 
   return (
     <SafeAreaView
@@ -612,7 +933,9 @@ export default function PatternScreen() {
             <PhotoFrame src={photo} label="pattern photo" aspect="4/5" />
             {saved ? (
               <View style={[styles.saved, { backgroundColor: colors.surface }]}>
-                <Text style={[styles.savedGlyph, { color: colors.ink }]}>♥</Text>
+                <Text style={[styles.savedGlyph, { color: colors.ink }]}>
+                  ♥
+                </Text>
               </View>
             ) : null}
           </View>
@@ -621,7 +944,9 @@ export default function PatternScreen() {
             <Text style={[styles.title, { color: colors.ink }]}>{name}</Text>
 
             {designer ? (
-              <Text style={[styles.designer, { color: colors.ink2 }]}>{designer}</Text>
+              <Text style={[styles.designer, { color: colors.ink2 }]}>
+                {designer}
+              </Text>
             ) : null}
 
             {/* Only once the request has answered: until then the saved copy
@@ -643,7 +968,11 @@ export default function PatternScreen() {
 
           {facts.length > 0 ? (
             <View
-              style={[styles.block, styles.ruled, { borderTopColor: colors.hairline }]}
+              style={[
+                styles.block,
+                styles.ruled,
+                { borderTopColor: colors.hairline },
+              ]}
             >
               <View style={styles.facts}>
                 {facts.map((fact) => (
@@ -655,39 +984,109 @@ export default function PatternScreen() {
             </View>
           ) : null}
 
-          {/* The one action on this screen, under the facts and above
-              the designer's own words — after everything there is to know
-              about the pattern, before everything there is to read. */}
+          {/* The actions, under the facts and above the designer's own words —
+              after everything there is to know about the pattern, before
+              everything there is to read.
+
+              Drawn on `canStart` alone, which is the stricter of the two
+              conditions in the row: Save wants only a session and an id. The
+              only pattern that satisfies that and not `canStart` is one drawn
+              without a live payload, and this screen only draws one of those
+              when it has a cached bookmark to draw it from — which is to say,
+              when it is already saved. A second gate would buy an inert
+              "Saved" under a ♥ that is already up, and nothing else. */}
           {canStart ? (
             <View
-              style={[styles.block, styles.ruled, { borderTopColor: colors.hairline }]}
+              style={[
+                styles.block,
+                styles.ruled,
+                { borderTopColor: colors.hairline },
+              ]}
             >
-              <Button
-                variant="primary"
-                size="lg"
-                full
-                accessibilityLabel={`Start a project from ${name}`}
-                onPress={() =>
-                  router.push({
-                    pathname: "/start-project",
-                    // `undefined` is dropped from the link; a pattern with no
-                    // craft simply arrives without one, and knits by default.
-                    params: { patternId: id, patternName: name, craft: craft ?? undefined },
-                  })
-                }
-              >
-                Start project
-              </Button>
+              {/* One band, two widths. Both controls are `lg`, because two
+                  rectangles on different baselines would read as a mistake
+                  rather than a hierarchy — the weight is carried by the fill
+                  and by the two-to-one split instead, which is what makes this
+                  an action with a companion rather than a choice of two. */}
+              <View style={styles.actionRow}>
+                <View style={styles.startSlot}>
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    full
+                    accessibilityLabel={`Start a project from ${name}`}
+                    onPress={start}
+                  >
+                    Start project
+                  </Button>
+                </View>
+
+                {/* Inert rather than absent once it is saved: the row keeps its
+                    shape, and "Saved" answers the question the button raises.
+                    It is not a toggle — un-saving destroys a Ravelry bookmark,
+                    and nothing on this screen should do that by being tapped
+                    twice. */}
+                <View style={styles.saveSlot}>
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    full
+                    disabled={saved || saving}
+                    accessibilityLabel={
+                      saved ? `${name} is saved` : `Save ${name} to your saves`
+                    }
+                    onPress={save}
+                  >
+                    {saved ? "Saved" : "Save"}
+                  </Button>
+                </View>
+              </View>
+
+              {/* The busy line only while there is nothing better to say: the
+                  moment the write lands the button reads "Saved", and leaving
+                  "Saving…" under it through the refresh would be the block
+                  arguing with itself about something already done. */}
+              {saving && !saved ? (
+                <Text style={[styles.notice, { color: colors.ink2 }]}>
+                  Saving…
+                </Text>
+              ) : saveProblem !== null ? (
+                <Text
+                  style={[
+                    styles.notice,
+                    {
+                      color:
+                        saveProblem === "offline"
+                          ? colors.aqua
+                          : colors.mustard,
+                    },
+                  ]}
+                >
+                  {SAVE_NOTICES[saveProblem]}
+                </Text>
+              ) : null}
             </View>
           ) : null}
 
-          {/* Quiet by construction: the action above is the thing to do with a
-              pattern, and taking a copy of it is housekeeping. */}
-          {offline !== null ? (
+          {/* Quiet by construction: the row above is what there is to do with
+              a pattern, and taking a copy of it is housekeeping.
+
+              It used to appear only when it had something to say about a file,
+              which meant a pattern with no download to offer had no block —
+              and so no way through to the pattern itself. The Ravelry link is
+              worth drawing on its own, so the block now also appears for that
+              alone, and on those patterns it is a label and one link. */}
+          {offline !== null || showRavelryLink ? (
             <View
-              style={[styles.block, styles.ruled, { borderTopColor: colors.hairline }]}
+              style={[
+                styles.block,
+                styles.ruled,
+                { borderTopColor: colors.hairline },
+              ]}
             >
-              <Text style={[styles.sectionLabel, { color: colors.ink2 }]}>Offline</Text>
+              <Text style={[styles.sectionLabel, { color: colors.ink2 }]}>
+                Pattern
+              </Text>
 
               {offline === "downloaded" ? (
                 // Where it came from, when it did not come from Ravelry. Worth
@@ -703,8 +1102,14 @@ export default function PatternScreen() {
                   {EXTERNAL_NOTICE}
                 </Text>
               ) : offline === "ask" ? (
+                /* The price, when Ravelry gave one. The line used to ask
+                   whether the pattern was in the knitter's library and say
+                   nothing about what it would cost to put it there — which is
+                   the one fact that decides what they do next. */
                 <Text style={[styles.notice, { color: colors.ink2 }]}>
-                  In your Ravelry library? Download appears here.
+                  {price === null
+                    ? "In your Ravelry library? Download appears here."
+                    : `${price} on Ravelry · the download appears here once it's yours.`}
                 </Text>
               ) : null}
 
@@ -717,7 +1122,9 @@ export default function PatternScreen() {
                   {busy === "add" ? "Adding to library…" : "Downloading…"}
                 </Text>
               ) : importing ? (
-                <Text style={[styles.notice, { color: colors.ink2 }]}>Importing…</Text>
+                <Text style={[styles.notice, { color: colors.ink2 }]}>
+                  Importing…
+                </Text>
               ) : importProblem !== null ? (
                 <Text style={[styles.notice, { color: colors.mustard }]}>
                   {IMPORT_NOTICES[importProblem]}
@@ -726,7 +1133,10 @@ export default function PatternScreen() {
                 <Text
                   style={[
                     styles.notice,
-                    { color: notice === "offline" ? colors.aqua : colors.mustard },
+                    {
+                      color:
+                        notice === "offline" ? colors.aqua : colors.mustard,
+                    },
                   ]}
                 >
                   {PDF_NOTICES[notice]}
@@ -743,6 +1153,20 @@ export default function PatternScreen() {
                   >
                     Open
                   </Button>
+                  {/* Here too, and last: a copy on the phone is the reason to
+                      be on this screen, but looking the pattern up is still
+                      worth a tap — the notes, the comments and the errata are
+                      not in the PDF. */}
+                  {showRavelryLink ? (
+                    <Button
+                      variant="quiet"
+                      size="sm"
+                      accessibilityLabel={`View ${name} on Ravelry`}
+                      onPress={openRavelry}
+                    >
+                      View on Ravelry
+                    </Button>
+                  ) : null}
                   {/* Ghost rather than quiet: throwing the copy away is the
                       least likely thing anybody came here to do. */}
                   <Button
@@ -754,7 +1178,12 @@ export default function PatternScreen() {
                     Remove download
                   </Button>
                 </View>
-              ) : showExternalLink || showAcquire || canImport ? (
+              ) : showPurchase ||
+                showExternalLink ||
+                showAcquire ||
+                showWebsite ||
+                showRavelryLink ||
+                canImport ? (
                 /* At most two quiet words, in the order they are done in:
                    whatever Ravelry can still do for this pattern, and then the
                    way in by hand. Nothing at all is a real answer, and it is
@@ -763,6 +1192,26 @@ export default function PatternScreen() {
                    stands on its own there, which beats a control going
                    nowhere. */
                 <View style={styles.actions}>
+                  {/* First, because on a paid pattern it is the whole answer:
+                      everything else in this row is a way of reading about
+                      something the knitter cannot open yet. The price is on the
+                      label rather than only in the line above — a control that
+                      leads to a payment should say so before it is tapped. */}
+                  {showPurchase ? (
+                    <Button
+                      variant="quiet"
+                      size="sm"
+                      accessibilityLabel={
+                        price === null
+                          ? `Buy ${name} on Ravelry`
+                          : `Buy ${name} on Ravelry for ${price}`
+                      }
+                      onPress={openPurchase}
+                    >
+                      {price === null ? "Buy on Ravelry" : `Buy on Ravelry · ${price}`}
+                    </Button>
+                  ) : null}
+
                   {showExternalLink ? (
                     <Button
                       variant="quiet"
@@ -784,9 +1233,42 @@ export default function PatternScreen() {
                           ? `Add ${name} to your library and download it`
                           : `Download ${name} for offline`
                       }
-                      onPress={() => acquire(offline === "add" ? "add" : "download")}
+                      onPress={() =>
+                        acquire(offline === "add" ? "add" : "download")
+                      }
                     >
-                      {offline === "add" ? "Add to library & download" : "Download for offline"}
+                      {offline === "add"
+                        ? "Add to library & download"
+                        : "Download for offline"}
+                    </Button>
+                  ) : null}
+
+                  {/* The designer's own site, which Ravelry's page calls
+                      "visit pattern website". Dropped when it is the same link
+                      the external branch above already drew — that one has the
+                      better copy for the case, and twice is worse than once. */}
+                  {showWebsite ? (
+                    <Button
+                      variant="quiet"
+                      size="sm"
+                      accessibilityLabel={`Visit the pattern website for ${name}`}
+                      onPress={openWebsite}
+                    >
+                      Pattern website
+                    </Button>
+                  ) : null}
+
+                  {/* After whatever Ravelry can still do about the file, and
+                      before the way in by hand: the two fallbacks in the order
+                      a knitter would try them. */}
+                  {showRavelryLink ? (
+                    <Button
+                      variant="quiet"
+                      size="sm"
+                      accessibilityLabel={`View ${name} on Ravelry`}
+                      onPress={openRavelry}
+                    >
+                      View on Ravelry
                     </Button>
                   ) : null}
 
@@ -808,9 +1290,15 @@ export default function PatternScreen() {
 
           {hasNotes(notesHtml, notesMarkdown) ? (
             <View
-              style={[styles.block, styles.ruled, { borderTopColor: colors.hairline }]}
+              style={[
+                styles.block,
+                styles.ruled,
+                { borderTopColor: colors.hairline },
+              ]}
             >
-              <Text style={[styles.sectionLabel, { color: colors.ink2 }]}>Notes</Text>
+              <Text style={[styles.sectionLabel, { color: colors.ink2 }]}>
+                Notes
+              </Text>
               <RichText html={notesHtml} markdown={notesMarkdown} />
             </View>
           ) : null}
@@ -858,9 +1346,9 @@ const styles = StyleSheet.create({
   },
   notice: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   marks: {
     flexDirection: "row",
@@ -873,6 +1361,30 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: space.s4,
   },
+  /**
+   * Two controls, one band. Both are `lg` — 56pt, comfortably over the 48pt
+   * minimum — and both slots take their height from the row, so nothing here
+   * can put the two of them on different baselines.
+   *
+   * The row must never wrap or truncate, and `lg`'s 24pt of padding a side is
+   * tuned for a button that owns the screen's width rather than a third of it,
+   * so the narrow slot is the one worth checking. At the narrowest width this
+   * app runs at — 360dp on Android, 375pt on the smallest supported iPhone —
+   * the block's 16pt margins and the 8pt gap leave the save slot 106pt, which
+   * is about 58pt of label after the padding. "Saved" is five characters of
+   * 17pt Solway Medium, near 47. It fits, and it is the tightest thing here;
+   * anything longer in that slot wants the split widened before the label is.
+   */
+  actionRow: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: space.s2,
+  },
+  // Two thirds against one. The split is the hierarchy: `full` inside each
+  // slot fills the share flex gave it, so the primary stays the wide one at
+  // every width without a single hardcoded number.
+  startSlot: { flex: 2 },
+  saveSlot: { flex: 1 },
   actions: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -886,14 +1398,14 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontFamily: fonts.ui,
     fontSize: type.small.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   stamp: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
     textAlign: "center",
     paddingTop: space.s10,
     paddingHorizontal: space.s4,

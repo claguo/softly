@@ -30,7 +30,7 @@ import { WebView } from "react-native-webview";
 import { Button } from "@/components/ui/app-button";
 import { getPatternPdf, patternPdfDirectoryUri } from "@/data";
 import { readId, readParam } from "@/features/detail/raw";
-import { fonts, space, tap, trackMicro, type, useTheme } from "@/theme";
+import { fonts, space, tap, trackSmall, type, useTheme } from "@/theme";
 
 /**
  * The way back, with no bar under it.
@@ -175,9 +175,9 @@ const styles = StyleSheet.create({
     // Stamped, like every other label in the chrome; floating changes where it
     // sits, not what it is.
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   missing: {
     // A bar used to hold this line down off the top of the screen. With the
@@ -198,9 +198,9 @@ const styles = StyleSheet.create({
   },
   stamp: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
     textAlign: "center",
   },
 });

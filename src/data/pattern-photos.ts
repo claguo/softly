@@ -22,11 +22,11 @@
  * to change and the next visit should not pay again.
  */
 
-import { eq } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 
 import { db } from '@/data/db';
 import { patternShow } from '@/data/ravelry';
-import { favorites, patternPhotos } from '@/data/schema';
+import { favorites, patternPhotos, projects } from '@/data/schema';
 
 /**
  * Largest first, which is the opposite of the order `sync.ts` reads photos in.
@@ -111,6 +111,110 @@ export function getPatternPhoto(patternId: number | null): string | null {
   return cached?.photoUrl ?? fromMirror(patternId);
 }
 
+/**
+ * Four at a time, the same as the yarn fill and for the same reason: this runs
+ * behind a list the knitter is already reading, and most of it costs nothing
+ * anyway because the mirror answers first.
+ */
+const CONCURRENCY = 4;
+
+/** Guards against two runs of the whole-list fill overlapping. */
+let filling: Promise<void> | null = null;
+
+/**
+ * Fills in a photograph for every project that has none of its own.
+ *
+ * For the lists. The detail screen can afford to ask about one pattern when it
+ * opens; a list cannot ask about twenty, one card at a time, as they scroll
+ * past. So the work is done once, in a batch, behind the list — and the great
+ * majority of it never touches the network, because a bookmarked pattern's
+ * photograph is already in `favorites.raw` and only has to be copied across.
+ *
+ * Safe to call whenever the projects change, and cheap when nothing has: with
+ * every pattern already answered for it is one query and no requests at all.
+ */
+export function fillProjectPatternPhotos(): Promise<void> {
+  filling ??= (async () => {
+    try {
+      const wanted = db
+        .selectDistinct({ patternId: projects.patternId })
+        .from(projects)
+        .leftJoin(patternPhotos, eq(projects.patternId, patternPhotos.patternId))
+        .where(
+          and(
+            isNotNull(projects.patternId),
+            // A project with its own photograph needs nothing borrowed.
+            isNull(projects.photoUrl),
+            // Never asked. A pattern asked about and found to have no picture
+            // has a row here with a null `photoUrl`, and is done.
+            isNull(patternPhotos.patternId),
+          ),
+        )
+        .all();
+
+      const ids = wanted.flatMap((row) => (row.patternId === null ? [] : [row.patternId]));
+
+      // The free pass first, and for most accounts it is the only one that
+      // does anything: a knitter tends to have bookmarked what they cast on.
+      const unmirrored = ids.filter((patternId) => {
+        const mirrored = fromMirror(patternId);
+
+        if (mirrored === null) {
+          return true;
+        }
+
+        remember(patternId, mirrored);
+
+        return false;
+      });
+
+      if (unmirrored.length > 0) {
+        await fetchInto(unmirrored);
+      }
+    } finally {
+      filling = null;
+    }
+  })();
+
+  return filling;
+}
+
+async function fetchInto(ids: number[]): Promise<void> {
+  const queue = [...ids];
+
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const patternId = queue.shift();
+
+      if (patternId === undefined) {
+        return;
+      }
+
+      try {
+        remember(patternId, await fetchPatternPhoto(patternId));
+      } catch {
+        // Offline, or a pattern since withdrawn. Nothing is written, so the
+        // next fill asks again and the card keeps its stripes until then.
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker));
+}
+
+/**
+ * The pattern's own photograph off `/patterns/{id}.json`.
+ *
+ * That endpoint leaves `first_photo` null even when there are eight pictures —
+ * the same quirk as `/yarns/{id}.json` — so `photos` is what is read.
+ */
+async function fetchPatternPhoto(patternId: number): Promise<string | null> {
+  const pattern = await patternShow(patternId);
+  const photos = (pattern as { photos?: unknown }).photos;
+
+  return heroUrl(Array.isArray(photos) ? photos[0] : null);
+}
+
 /** Guards against two screens asking about the same pattern at once. */
 const running = new Map<number, Promise<string | null>>();
 
@@ -153,11 +257,7 @@ export function ensurePatternPhoto(patternId: number | null): Promise<string | n
 
   const request = (async () => {
     try {
-      const pattern = await patternShow(patternId);
-      // `first_photo` is null on this endpoint even when there are eight
-      // pictures; `photos` is where they are.
-      const photos = (pattern as { photos?: unknown }).photos;
-      const url = heroUrl(Array.isArray(photos) ? photos[0] : null);
+      const url = await fetchPatternPhoto(patternId);
 
       remember(patternId, url);
 

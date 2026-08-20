@@ -108,12 +108,11 @@ export const type = {
   title: { fontSize: 28, lineHeight: 30 }, // screen title
   heading: { fontSize: 17, lineHeight: 22 }, // card name, primary button
   body: { fontSize: 15, lineHeight: 22 }, // minimum on-device body size
-  small: { fontSize: 13, lineHeight: 18 },
-  micro: { fontSize: 11, lineHeight: 13 }, // stamped label; never smaller for tappables
+  small: { fontSize: 13, lineHeight: 18 }, // smallest tier; stamped label, never smaller for tappables
 } as const;
 
-/** Tracking on stamped labels: 0.035em of the micro size. */
-export const trackMicro = 0.035 * type.micro.fontSize;
+/** Tracking on stamped labels: 0.035em of the small size. */
+export const trackSmall = 0.035 * type.small.fontSize;
 
 export const space = {
   s1: 4,

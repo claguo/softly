@@ -23,7 +23,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { GestureResponderEvent, LayoutChangeEvent } from 'react-native';
 
 import { hexToHsl, hslToHex, readableOn, type Hsl } from '@/features/stash/color';
-import { fonts, radius, space, trackMicro, type, useTheme } from '@/theme';
+import { fonts, radius, space, trackSmall, type, useTheme } from '@/theme';
 
 /**
  * Bands per strip.
@@ -205,16 +205,16 @@ const styles = StyleSheet.create({
   },
   previewHex: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   strip: { gap: space.s1 },
   stripLabel: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   track: {
     height: STRIP_HEIGHT,

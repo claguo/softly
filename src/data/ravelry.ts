@@ -10,9 +10,11 @@
  * the offline cache. `patternsSearch`, `patternShow`, `yarnsSearch`,
  * `librarySearch`, `volumeShow`, `projectShow`, `getNeedleSizes`,
  * `getNeedleTypes` and `getYarnWeights` are single, online-only reads that go
- * straight to the caller asking for them. `createProject`, `createStashEntry`, `updateProject`,
- * `createProjectPhoto`, `requestUploadToken`, `volumesCreate`, `volumesDelete`
- * and `generateDownloadLink` are the writes; all but the last three send a body.
+ * straight to the caller asking for them. `createProject`, `createStashEntry`,
+ * `updateProject`, `updateStashEntry`, `favoritesCreate`, `createProjectPhoto`,
+ * `volumesCreate`, `requestUploadToken`, `volumesDelete` and
+ * `generateDownloadLink` are the writes; the last three send no body, because
+ * everything they need is already in the path.
  *
  * `uploadImage` is the one call in this file that carries no token at all —
  * Ravelry's image host authenticates the single-use upload token in the form
@@ -881,6 +883,106 @@ export async function stashEntryShow(
   }
 
   return entry;
+}
+
+/**
+ * The new bookmark's own id, out of `{bookmark: {id, type, favorited: {…}}}`.
+ *
+ * `bookmark` is the observed key — watched arrive on 2026-08-20, see
+ * `favoritesCreate` — and it leads. The three behind it are guesses kept for
+ * the same reason `readImageId` walks rather than indexes: this endpoint has
+ * already been caught spelling one thing two ways, and a response that renamed
+ * its envelope must not read as a failed bookmark.
+ *
+ * Null is a perfectly ordinary answer and not an error: the bookmark exists on
+ * Ravelry the moment the POST answers 200, and the id is only wanted for a
+ * delete this app does not perform.
+ */
+function readFavoriteId(body: unknown): number | null {
+  if (typeof body !== 'object' || body === null) {
+    return null;
+  }
+
+  const envelope = body as Record<string, unknown>;
+  // Observed first, then the two spellings the documentation implies, then the
+  // bare envelope: on a response with no wrapper at all, its own `id` is the
+  // bookmark's.
+  const candidates = [envelope.bookmark, envelope.favorite, envelope.favorites, envelope];
+
+  for (const candidate of candidates) {
+    const record = Array.isArray(candidate) ? candidate[0] : candidate;
+    if (typeof record !== 'object' || record === null) {
+      continue;
+    }
+
+    const id = (record as { id?: unknown }).id;
+    if (typeof id === 'number' && Number.isInteger(id) && id > 0) {
+      return id;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Bookmarks one pattern for the signed-in knitter — a Ravelry favorite, which
+ * is what fills this app's Saves tab.
+ *
+ * **The field is `type`, and Ravelry's own documentation says `favorited_type`.
+ * The documentation is wrong.** That sentence is the whole reason this comment
+ * is long. Verified against the live account on 2026-08-20 (create then delete,
+ * pattern 7495801):
+ *
+ * - `{"favorited_type": "pattern", "favorited_id": 7495801}` — the documented
+ *   pair — is refused outright with **HTTP 400**: `{"error":"type should be one
+ *   of: project, pattern, yarn, stash, forumpost, designer, yarnbrand,
+ *   yarnshop, bundle"}`. Note the endpoint names the nine valid values in the
+ *   refusal; they are written down here because nothing else we hold lists
+ *   them, and they arrived free with the mistake.
+ * - `{"type": "pattern", "favorited_id": 7495801}` answers **200** with
+ *   `{"bookmark": {"id": 591344946, "type": "pattern", "created_at": …,
+ *   "tag_list": "", "favorited": {"id": 7495801, "name": …, "permalink": …,
+ *   "first_photo": {…}}}}`. The outer `id` is the **bookmark's**, not the
+ *   pattern's — 591344946 against a pattern id of 7495801 — and it is what
+ *   `favorites.id` holds in the local mirror.
+ * - `DELETE /people/{username}/favorites/{bookmark_id}.json` answered 200 on
+ *   cleanup, so un-bookmarking works and is keyed by that outer id. Nothing
+ *   here calls it: this app has a Save button and deliberately no un-save.
+ *
+ * Only the two halves disagree, and both endpoints agree with each other
+ * against the prose: `favorites/list.json` returns records keyed `type` too,
+ * with the pattern nested under `favorited`, which is exactly what
+ * `toFavoriteRow` in `sync.ts` already reads. It is the written docs that are
+ * alone here, not this file.
+ *
+ * **Which is the failure mode this paragraph exists to prevent.** A reader who
+ * finds `type` below, looks the endpoint up, reads `favorited_type` in
+ * Ravelry's official documentation, and concludes there is a typo here will
+ * "fix" it and turn every save into a 400 — which is precisely what shipped
+ * once already, off the documented shape, before anybody ran it. Do not change
+ * this field on the strength of a document. Change it on the strength of a 200.
+ *
+ * The raw JSON body needed no correcting: `authedPost` sends the object as the
+ * body itself, the same as `createProject` and `createStashEntry`, and that
+ * inheritance turned out to be right.
+ *
+ * The response is still read by `readFavoriteId` and this still returns
+ * `number | null` rather than a record. A 200 means the pattern is bookmarked;
+ * a body in a shape nobody here has seen must not turn that into a failure,
+ * and the id has no caller to disappoint. Only a request that never landed or
+ * that Ravelry refused throws, both as `RavelryApiError` from `request`.
+ */
+export async function favoritesCreate(
+  username: string,
+  patternId: number,
+): Promise<number | null> {
+  const body = await authedPost<unknown>(`/people/${person(username)}/favorites/create.json`, {
+    // `type`, not `favorited_type`. See above before touching this.
+    type: 'pattern',
+    favorited_id: patternId,
+  });
+
+  return readFavoriteId(body);
 }
 
 // ---------------------------------------------------------------------------

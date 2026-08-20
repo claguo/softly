@@ -60,7 +60,7 @@ import { firstString, readParam } from "@/features/detail/raw";
 import { sizeOptions, type SizeOption } from "@/features/start-project/needle-sizes";
 import { setPendingNeedleSelection } from "@/features/start-project/pending-selection";
 import { SizeGrid } from "@/features/start-project/rows";
-import { fonts, space, trackMicro, type, useTheme } from "@/theme";
+import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 /** "Double Pointed" and "double_pointed" both become `double-pointed`. */
 function slug(value: string): string {
@@ -365,8 +365,8 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontFamily: fonts.ui,
     fontSize: type.small.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   // One thing the sheet asks for: its label and the control under it.
   field: {
@@ -390,9 +390,9 @@ const styles = StyleSheet.create({
   },
   stamp: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
     textAlign: "center",
   },
 });

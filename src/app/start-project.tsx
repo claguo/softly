@@ -83,7 +83,7 @@ import {
   SizeGrid,
   YarnChoice,
 } from "@/features/start-project/rows";
-import { fonts, space, trackMicro, type, useTheme } from "@/theme";
+import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 const NOTICES: Record<Problem, string> = {
   failed: "Couldn't start the project.",
@@ -576,14 +576,14 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontFamily: fonts.ui,
     fontSize: type.small.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   sectionLabel: {
     fontFamily: fonts.ui,
     fontSize: type.small.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
     paddingTop: space.s5,
     paddingBottom: space.s2,
     paddingHorizontal: space.s4,
@@ -596,17 +596,17 @@ const styles = StyleSheet.create({
   },
   quiet: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
     paddingHorizontal: space.s4,
     paddingBottom: space.s2,
   },
   stamp: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
     textAlign: "center",
   },
   invitation: {

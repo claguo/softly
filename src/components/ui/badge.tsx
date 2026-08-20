@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import type { ReactNode } from 'react';
 
-import { fonts, radius, trackMicro, type, useTheme } from '@/theme';
+import { fonts, radius, trackSmall, type, useTheme } from '@/theme';
 
 export type BadgeTone = 'library' | 'offline' | 'queued' | 'committed' | 'attention' | 'neutral';
 
@@ -59,8 +59,8 @@ const styles = StyleSheet.create({
   },
   label: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
 });

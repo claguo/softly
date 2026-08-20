@@ -46,7 +46,7 @@ import { finishProject, getProjectById, type FinishProblem, type UploadFile } fr
 import { parseRaw, readId } from "@/features/detail/raw";
 import { projectFacts, stampedDate } from "@/features/finish/facts";
 import { chooseFromLibrary, takePhoto } from "@/features/finish/photo";
-import { fonts, space, trackMicro, type, useTheme } from "@/theme";
+import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 const NOTICES: Record<FinishProblem, string> = {
   failed: "Couldn't finish the project.",
@@ -347,15 +347,15 @@ const styles = StyleSheet.create({
   },
   date: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   notice: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   footer: {
     paddingTop: space.s4,
@@ -365,9 +365,9 @@ const styles = StyleSheet.create({
   },
   stamp: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
     textAlign: "center",
   },
   invitation: {
@@ -378,9 +378,9 @@ const styles = StyleSheet.create({
   },
   unavailable: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
     textAlign: "center",
     paddingTop: space.s10,
     paddingHorizontal: space.s4,

@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { fonts, radius, space, trackMicro, type, useTheme } from '@/theme';
+import { fonts, radius, space, trackSmall, type, useTheme } from '@/theme';
 
 export type SyncState = 'offline' | 'queued' | 'synced';
 
@@ -81,8 +81,8 @@ const styles = StyleSheet.create({
   },
   text: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
 });

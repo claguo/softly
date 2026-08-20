@@ -20,7 +20,7 @@ import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PhotoFrame } from '@/components/ui';
-import { fonts, trackMicro, type, useTheme } from '@/theme';
+import { fonts, trackSmall, type, useTheme } from '@/theme';
 
 export type PatternCellProps = {
   name: string;
@@ -115,9 +115,9 @@ const styles = StyleSheet.create({
   },
   meta: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
+    fontSize: type.small.fontSize,
     lineHeight: 12,
-    letterSpacing: trackMicro,
+    letterSpacing: trackSmall,
   },
   saved: {
     position: 'absolute',

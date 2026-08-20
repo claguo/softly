@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
 
-import { radius, fonts, trackMicro, type, useTheme } from '@/theme';
+import { radius, fonts, trackSmall, type, useTheme } from '@/theme';
 
 export type FilterChipProps = {
   label: string;
@@ -88,9 +88,9 @@ const styles = StyleSheet.create({
   },
   value: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
+    fontSize: type.small.fontSize,
     lineHeight: type.small.lineHeight,
-    letterSpacing: trackMicro,
+    letterSpacing: trackSmall,
     opacity: 0.9,
   },
   remove: {

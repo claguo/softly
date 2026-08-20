@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { fonts, space, tap, trackMicro, type, useTheme } from "@/theme";
+import { fonts, space, tap, trackSmall, type, useTheme } from "@/theme";
 
 export type BackBarProps = {
   /**
@@ -126,12 +126,12 @@ const styles = StyleSheet.create({
     paddingLeft: space.s3,
   },
   label: {
-    // Stamped, like every other label in the chrome: micro size, micro
+    // Stamped, like every other label in the chrome: small size, small
     // tracking, no weight bump, sentence case.
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   titleBox: {
     // Centred on the screen rather than in what the Back control leaves over:

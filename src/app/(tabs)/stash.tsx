@@ -32,22 +32,14 @@ import { NeedleRow } from "@/components/ui/needle-row";
 import { YarnCard } from "@/components/ui/yarn-card";
 import {
   fillStashPhotos,
-  syncAll,
   tintFor,
   useNeedles,
   useStash,
-  useSyncStatus,
   type NeedleListRow,
   type StashListRow,
 } from "@/data";
-import {
-  fonts,
-  space,
-  tabBarInset,
-  trackMicro,
-  type,
-  useTheme,
-} from "@/theme";
+import { usePullToSync } from "@/features/sync/pull-to-sync";
+import { fonts, space, tabBarInset, trackSmall, type, useTheme } from "@/theme";
 
 /**
  * One list, three row shapes: tagged so the renderer never has to guess.
@@ -159,7 +151,6 @@ export default function StashScreen() {
   const { status, user } = useAuth();
   const { data: yarn } = useStash();
   const { data: needles } = useNeedles();
-  const sync = useSyncStatus();
 
   const signedIn = status === "signedIn";
   const username = user?.username ?? null;
@@ -211,11 +202,8 @@ export default function StashScreen() {
     }
   }, [signedIn, yarn]);
 
-  const onRefresh = useCallback(() => {
-    if (username !== null) {
-      void syncAll(username);
-    }
-  }, [username]);
+  // A gesture on this screen, not the global sync status: see `usePullToSync`.
+  const { refreshing, onRefresh } = usePullToSync(username);
 
   const renderSectionHeader = useCallback(
     ({ section }: { section: StashSection }) => (
@@ -223,7 +211,7 @@ export default function StashScreen() {
         <Text style={[styles.sectionLabel, { color: colors.ink2 }]}>
           {section.title}
         </Text>
-        {/* Link-colored, and stamped at the same micro size as the label it
+        {/* Link-colored, and stamped at the same small size as the label it
             sits across from: this is the screen header's one text action, said
             again per section, because each section adds a different thing. */}
         <Pressable
@@ -254,10 +242,7 @@ export default function StashScreen() {
       edges={["top"]}
       style={[styles.screen, { backgroundColor: colors.paper }]}
     >
-      <ScreenHeader
-        title="Stash"
-        count={`${yarn.length + needles.length} on hand`}
-      />
+      <ScreenHeader title="Stash" />
 
       <SectionList
         sections={sections}
@@ -271,7 +256,7 @@ export default function StashScreen() {
         refreshControl={
           username === null ? undefined : (
             <RefreshControl
-              refreshing={sync.phase === "syncing"}
+              refreshing={refreshing}
               onRefresh={onRefresh}
               tintColor={colors.ink2}
             />
@@ -309,8 +294,8 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     fontFamily: fonts.ui,
     fontSize: type.small.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   sectionAction: {
     // Padded for the finger, then pulled back out of the layout, so the touch
@@ -320,18 +305,18 @@ const styles = StyleSheet.create({
     marginVertical: -space.s2,
   },
   sectionActionLabel: {
-    // Stamped, like the screen header's action: micro size, micro tracking, no
+    // Stamped, like the screen header's action: small size, small tracking, no
     // weight bump, sentence case.
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   emptyLine: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
     paddingBottom: space.s2,
     paddingHorizontal: space.s4,
   },

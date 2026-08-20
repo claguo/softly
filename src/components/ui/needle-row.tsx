@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Badge } from "@/components/ui/badge";
 import { Stamp } from "@/components/ui/stamp";
-import { fonts, radius, space, tap, trackMicro, type, useTheme } from "@/theme";
+import { fonts, radius, space, tap, trackSmall, type, useTheme } from "@/theme";
 
 export type NeedleRowProps = {
   /** Metric size, e.g. "4.5". */
@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui,
     fontSize: 8.5,
     lineHeight: 10,
-    letterSpacing: trackMicro,
+    letterSpacing: trackSmall,
     marginTop: 2,
   },
   body: {

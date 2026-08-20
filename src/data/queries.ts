@@ -34,6 +34,7 @@ import {
   favorites,
   needles,
   patternPdfs,
+  patternPhotos,
   projects,
   stash,
   yarnColors,
@@ -136,7 +137,20 @@ const selectNeedles = () =>
     .all();
 
 const selectProjects = () =>
-  db.select(projectColumns).from(projects).orderBy(desc(projects.updatedAtRemote)).all();
+  db
+    .select({
+      ...projectColumns,
+      // The pattern's own photograph, for the very common project nobody has
+      // photographed yet. Not coalesced into `photoUrl` the way the stash
+      // list coalesces its two: a card has to be able to tell them apart, so
+      // that it never calls somebody else's finished object this project's.
+      // See `pattern-photos.ts`.
+      patternPhotoUrl: patternPhotos.photoUrl,
+    })
+    .from(projects)
+    .leftJoin(patternPhotos, eq(projects.patternId, patternPhotos.patternId))
+    .orderBy(desc(projects.updatedAtRemote))
+    .all();
 
 export type FavoriteListRow = ReturnType<typeof selectFavorites>[number];
 export type StashListRow = ReturnType<typeof selectStash>[number];
@@ -230,7 +244,12 @@ const stashStore = createLiveStore(
   selectStash,
 );
 const needlesStore = createLiveStore([getTableName(needles)], selectNeedles);
-const projectsStore = createLiveStore([getTableName(projects)], selectProjects);
+// Two tables: the projects themselves, and the borrowed pattern photographs
+// that `pattern-photos.ts` fills in behind the list.
+const projectsStore = createLiveStore(
+  [getTableName(projects), getTableName(patternPhotos)],
+  selectProjects,
+);
 
 function useLiveRows<TRow>(store: LiveStore<TRow>): LiveRows<TRow> {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);

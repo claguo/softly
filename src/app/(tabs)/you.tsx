@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/auth/context';
 import { ScreenHeader } from '@/components/screen-header';
-import { fonts, radius, space, tabBarInset, tap, trackMicro, type, useTheme } from '@/theme';
+import { fonts, radius, space, tabBarInset, tap, trackSmall, type, useTheme } from '@/theme';
 
 const AVATAR = 96;
 
@@ -149,11 +149,11 @@ const styles = StyleSheet.create({
     lineHeight: type.heading.lineHeight,
   },
   stamp: {
-    // Stamped label: micro size, micro tracking, sentence case.
+    // Stamped label: small size, small tracking, sentence case.
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
     textAlign: 'center',
   },
   avatar: {

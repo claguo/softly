@@ -75,6 +75,38 @@ NOTE: needle inventory has NO create endpoint (needles: list/sizes/types only) �
 
 **✅ FULL CHAIN VERIFIED 2026-08-19 with a real OAuth token (scope `offline library-pdf`):** volumes/create (raw JSON body, Bearer) → volume_attachments populate ASYNC (~2-6s; poll GET /volumes/{id}.json) → generate_download_link 200 → `{download_link: {activated_at, expires_at, url}}` → URL served application/pdf with `%PDF-` magic. Cleanup delete 200. **CRITICAL: generate_download_link 403s with a Basic-Auth personal key** ("Not authorized to generate download links") — personal keys do NOT carry library-pdf; only OAuth tokens that requested the scope work. The app's tokens request it at login (broker default scope), so on-device this works.
 
+## Favorites (captured 2026-08-19, verified 2026-08-20)
+
+**✅ EMPIRICALLY VERIFIED 2026-08-20 (live create+delete on `claguo`, pattern 7495801) — AND THE OFFICIAL DOCS ARE WRONG.**
+
+**The create field is `type`, NOT the documented `favorited_type`.** This is the `{"data": …}` envelope trap all over again, except it fails loudly instead of quietly. The documented pair is refused:
+
+```
+POST /people/claguo/favorites/create.json   {"favorited_type":"pattern","favorited_id":7495801}
+HTTP 400  {"error":"type should be one of: project, pattern, yarn, stash, forumpost, designer, yarnbrand, yarnshop, bundle"}
+```
+
+The working request and its response:
+
+```
+POST /people/claguo/favorites/create.json   {"type":"pattern","favorited_id":7495801}
+HTTP 200
+{"bookmark":{"created_at":"2026/08/20 03:08:09 -0400","id":591344946,"type":"pattern",
+             "tag_list":"","favorited":{"id":7495801,"name":"Melt the ICE Hat",
+             "permalink":"melt-the-ice-hat","first_photo":{…}}}}
+```
+
+- Envelope key is **`bookmark`** (not `favorite`). Outer `id` = **591344946 = the bookmark's own id**, not the pattern's (7495801) — this is what `favorites.id` holds in the mirror; the pattern is nested under `favorited`.
+- The nine valid `type` values come free with the 400 above and are listed nowhere else we hold: `project, pattern, yarn, stash, forumpost, designer, yarnbrand, yarnshop, bundle`. This app only ever sends `pattern`.
+- **Encoding: raw JSON body confirmed**, same as projects/create and stash/create. The inheritance guess was right; only the field name was wrong.
+- `DELETE /people/claguo/favorites/591344946.json` → **200** on cleanup. Un-bookmarking works and is keyed by the bookmark id. **Not implemented in the app**: Softly has a Save button and deliberately no un-save, so nothing holds a bookmark id to delete with.
+- `GET /people/{username}/favorites/list.json?types=pattern` — the read side (`favoritesList`), exercised every sync. It returns records keyed **`type`** with the pattern under `favorited`, i.e. read and write agree with each other and both disagree with the prose. `toFavoriteRow` in `sync.ts` already reads it that way.
+- Optional fields still only documented, not tested: `comment` String, `notes` String, `bundle_ids` Array.
+
+**⚠️ THE TRAP, for whoever reads this next.** Ravelry's official written docs say `favorited_type`. They are wrong, and `favoritesCreate` shipped once off that document and 400'd on the first real tap. A reader who sees `type` in `ravelry.ts`, looks the endpoint up, and "corrects" it back will break every save in the app. Do not change that field on the strength of a document — change it on the strength of a 200.
+
+`favoritesCreate` still reads the response defensively and still returns `number | null`: it leads with the observed `bookmark` key, keeps `favorite`/`favorites`/bare-envelope behind it as guesses, and returns `null` rather than throwing when it finds no id, because a 200 means the bookmark exists whatever the body looks like.
+
 ## Image upload (captured 2026-08-19)
 
 1. `POST /upload/request_token.json` (authenticated) → `{upload_token}` — SINGLE USE.

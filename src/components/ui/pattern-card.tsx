@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Badge } from "@/components/ui/badge";
 import { PhotoFrame } from "@/components/ui/photo-frame";
-import { fonts, space, trackMicro, type, useTheme } from "@/theme";
+import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 /** grid = 2-up photo-forward results; list = compact rows in Saves. */
 export type PatternCardVariant = "grid" | "list";
@@ -158,9 +158,9 @@ const styles = StyleSheet.create({
   },
   meta: {
     fontFamily: fonts.ui,
-    fontSize: 9.5,
-    lineHeight: 12,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   marks: {
     flexDirection: "row",

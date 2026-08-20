@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import type { ReactNode } from 'react';
 
-import { fonts, trackMicro, type, useTheme } from '@/theme';
+import { fonts, trackSmall, type, useTheme } from '@/theme';
 
 /** `spruce` is the committed state; everything else is a plain measurement. */
 export type StampTone = 'ink' | 'spruce';
@@ -33,12 +33,10 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   label: {
-    // 9.5px is the handoff's caption size — smaller than `micro`, but it is
-    // never a tap target, so the 11px floor does not apply.
     fontFamily: fonts.ui,
-    fontSize: 9.5,
-    lineHeight: 12,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   value: {
     fontFamily: fonts.uiMedium,

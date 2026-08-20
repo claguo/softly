@@ -7,9 +7,11 @@
  * `getProjectById`/`getStashById`/
  * `getFavoriteByPatternId` for one cached row whole, `syncAll` plus
  * `useSyncStatus` for refreshing it, and `patternsSearch`/`patternShow`/
- * `yarnsSearch` for the things that only exist online. `createProject` and
- * `createStashEntry` write to Ravelry, and `refreshProjects`/`refreshStash`
- * are how the mirror catches up afterwards; `insertLocalNeedle` writes to the
+ * `yarnsSearch` for the things that only exist online. `createProject`,
+ * `createStashEntry` and `favoritesCreate` write to Ravelry, and
+ * `refreshProjects`/`refreshStash`/`refreshFavorites` are how the mirror
+ * catches up afterwards — one table each, for the caller that already knows
+ * which one it changed; `insertLocalNeedle` writes to the
  * mirror itself, because the needle drawer is the one thing Ravelry will not
  * be told about. `finishProject` is the other end of the same story — the
  * photograph, the status and the refresh in one call that reports rather than
@@ -37,6 +39,7 @@ export {
   createProject,
   createProjectPhoto,
   createStashEntry,
+  favoritesCreate,
   generateDownloadLink,
   getNeedleSizes,
   getNeedleTypes,
@@ -144,7 +147,11 @@ export {
 
 export { fillStashPhotos, rememberYarnPhoto } from '@/data/yarn-photos';
 
-export { ensurePatternPhoto, getPatternPhoto } from '@/data/pattern-photos';
+export {
+  ensurePatternPhoto,
+  fillProjectPatternPhotos,
+  getPatternPhoto,
+} from '@/data/pattern-photos';
 
 export { ensureProjectDetail, getProjectDetail } from '@/data/project-detail';
 
@@ -206,6 +213,7 @@ export {
 
 export {
   getSyncStatus,
+  refreshFavorites,
   refreshProjects,
   refreshStash,
   subscribe as subscribeToSyncStatus,

@@ -8,7 +8,7 @@
  */
 
 import { router } from "expo-router";
-import { memo, useCallback } from "react";
+import { memo, useEffect } from "react";
 import { FlatList, RefreshControl, StyleSheet, Text } from "react-native";
 import {
   SafeAreaView,
@@ -19,12 +19,13 @@ import { useAuth } from "@/auth/context";
 import { ScreenHeader } from "@/components/screen-header";
 import { ProjectCard } from "@/components/ui/project-card";
 import {
-  syncAll,
+  fillProjectPatternPhotos,
   useProjects,
   useSyncStatus,
   type ProjectListRow,
 } from "@/data";
-import { fonts, space, tabBarInset, trackMicro, type, useTheme } from "@/theme";
+import { usePullToSync } from "@/features/sync/pull-to-sync";
+import { fonts, space, tabBarInset, trackSmall, type, useTheme } from "@/theme";
 
 /**
  * Ravelry's `status_name`, lowercased, for a project that is actually on the
@@ -60,6 +61,7 @@ const ProjectItem = memo(function ProjectItem({
       status={row.status !== null && !isActive(row) ? row.status : undefined}
       touchedAt={row.updatedAtRemote ?? undefined}
       photo={row.photoUrl ?? undefined}
+      patternPhoto={row.patternPhotoUrl ?? undefined}
       onPress={() =>
         router.push({ pathname: "/project/[id]", params: { id: row.id } })
       }
@@ -90,11 +92,19 @@ export default function HomeScreen() {
     ? projects.filter(isActive).length
     : projects.length;
 
-  const onRefresh = useCallback(() => {
-    if (username !== null) {
-      void syncAll(username);
+  // Borrowed pattern photographs for the cards that have none of their own.
+  // Mostly free — a bookmarked pattern's picture is already in the mirror —
+  // and idempotent, so running it whenever the list changes costs one query
+  // when there is nothing to do. See `pattern-photos.ts`.
+  useEffect(() => {
+    if (signedIn) {
+      void fillProjectPatternPhotos();
     }
-  }, [username]);
+  }, [signedIn, projects]);
+
+  // A gesture on this screen, not the global sync status: see `usePullToSync`
+  // for what wiring the spinner to `phase === 'syncing'` did on a tab switch.
+  const { refreshing, onRefresh } = usePullToSync(username);
 
   return (
     <SafeAreaView
@@ -118,7 +128,7 @@ export default function HomeScreen() {
         refreshControl={
           username === null ? undefined : (
             <RefreshControl
-              refreshing={sync.phase === "syncing"}
+              refreshing={refreshing}
               onRefresh={onRefresh}
               tintColor={colors.ink2}
             />
@@ -152,9 +162,9 @@ const styles = StyleSheet.create({
   },
   stamp: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
     textAlign: "center",
     paddingTop: space.s10,
   },

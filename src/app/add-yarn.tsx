@@ -67,7 +67,7 @@ import {
   useYarnSearch,
   yarnPhoto,
 } from "@/features/start-project/use-yarn-search";
-import { fonts, space, trackMicro, type, useTheme } from "@/theme";
+import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 const NOTICES: Record<Problem, string> = {
   failed: "Couldn't add the yarn.",
@@ -422,8 +422,8 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontFamily: fonts.ui,
     fontSize: type.small.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   // One thing the sheet asks for: its label and the control under it.
   field: {
@@ -447,15 +447,15 @@ const styles = StyleSheet.create({
   },
   note: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   stamp: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
     textAlign: "center",
   },
 });

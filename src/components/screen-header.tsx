@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { fonts, space, tap, trackMicro, type, useTheme } from '@/theme';
+import { fonts, space, tap, trackSmall, type, useTheme } from '@/theme';
 
 export type ScreenHeaderProps = {
   /** Screen title, set in the display serif. */
@@ -81,9 +81,9 @@ const styles = StyleSheet.create({
   },
   count: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   action: {
     // A real 48pt touch box, pulled back into the header's own padding so the
@@ -94,11 +94,11 @@ const styles = StyleSheet.create({
     paddingLeft: space.s3,
   },
   actionLabel: {
-    // Stamped, per the handoff: the label face at micro size with micro
+    // Stamped, per the handoff: the label face at small size with small
     // tracking — no weight bump, sentence case.
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
 });

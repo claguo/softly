@@ -655,3 +655,20 @@ const STASH_ONLY: readonly SyncResource[] = ['stash'];
 export function refreshStash(username: string): Promise<SyncOutcome> {
   return start(username, STASH_ONLY);
 }
+
+const FAVORITES_ONLY: readonly SyncResource[] = ['favorites'];
+
+/**
+ * Just the favorites table, and the third of the same shape: having bookmarked
+ * one pattern on Ravelry, the screen that bookmarked it needs the row in the
+ * mirror before Saves can draw it, and nothing about a bookmark touches the
+ * stash, the needles or the projects.
+ *
+ * Same guarantees as `syncAll` — it does not throw, and it reports through the
+ * outcome — which is what lets a caller await it and then ignore the answer: a
+ * refresh that could not land has not un-bookmarked anything, and the next
+ * full sync carries the row.
+ */
+export function refreshFavorites(username: string): Promise<SyncOutcome> {
+  return start(username, FAVORITES_ONLY);
+}

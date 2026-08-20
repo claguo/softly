@@ -67,7 +67,7 @@ import {
 } from "@/features/detail/raw";
 import { triage, type Problem } from "@/features/start-project/problem";
 import { ColorGrid } from "@/features/stash/color-grid";
-import { fonts, space, trackMicro, type, useTheme } from "@/theme";
+import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 const NOTICES: Record<Problem, string> = {
   failed: "Couldn't save the changes.",
@@ -566,7 +566,7 @@ const styles = StyleSheet.create({
     // rhythm came to, because without the line 24 reads as one group and not
     // two.
     gap: space.s8,
-    // s3 at the top, not the s5 a run under a display line takes: one micro
+    // s3 at the top, not the s5 a run under a display line takes: one small
     // line is all that opens this one, and s5 under the bar's hairline hung it
     // low.
     paddingTop: space.s3,
@@ -577,8 +577,8 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontFamily: fonts.ui,
     fontSize: type.small.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   // One thing the sheet asks for: its label and the control under it.
   field: {
@@ -603,21 +603,21 @@ const styles = StyleSheet.create({
   },
   note: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   stampLeft: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   stamp: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
     textAlign: "center",
     paddingTop: space.s10,
     paddingHorizontal: space.s4,

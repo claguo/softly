@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { PhotoFrame } from "@/components/ui/photo-frame";
 import { Stamp } from "@/components/ui/stamp";
 import { formatRelative } from "@/components/ui/sync-notice";
-import { fonts, space, trackMicro, type, useTheme } from "@/theme";
+import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 export type ProjectCardProps = {
   name: string;
@@ -23,6 +23,13 @@ export type ProjectCardProps = {
   /** Last touched; stamped as "3d ago" beside the name. */
   touchedAt?: Date | number;
   photo?: string;
+  /**
+   * The pattern's photograph, shown only when there is no `photo` of the
+   * knitter's own. Kept a separate prop rather than folded into `photo` by the
+   * caller so the card can say which one it is drawing — a stock shot of
+   * somebody else's finished object must not be announced as this project's.
+   */
+  patternPhoto?: string;
   /** Progress. The track is drawn only when both are known — our projects
    * table does not carry row counts, so most cards have no track at all. */
   rows?: number;
@@ -42,6 +49,7 @@ export function ProjectCard({
   status,
   touchedAt,
   photo,
+  patternPhoto,
   rows,
   rowsTotal,
   pending = false,
@@ -70,7 +78,15 @@ export function ProjectCard({
         pressed && onPress ? { backgroundColor: colors.surfaceSunk } : null,
       ]}
     >
-      <PhotoFrame src={photo} label="project photo" width={96} aspect="1/1" />
+      {/* The pattern's picture stands in when the knitter has not taken one,
+          which is the normal case rather than the exception. Labelled for what
+          it actually is — see `patternPhoto`. */}
+      <PhotoFrame
+        src={photo ?? patternPhoto}
+        label={photo === undefined && patternPhoto !== undefined ? "pattern photo" : "project photo"}
+        width={96}
+        aspect="1/1"
+      />
 
       <View style={styles.body}>
         <View style={styles.titleRow}>
@@ -160,13 +176,11 @@ const styles = StyleSheet.create({
     lineHeight: type.heading.lineHeight,
   },
   touched: {
-    // Stamped, one step under `micro`: it is a caption on a card, never a tap
-    // target, so the 11px floor does not apply.
     flexShrink: 0,
     fontFamily: fonts.ui,
-    fontSize: 10.5,
-    lineHeight: 13,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   source: {
     fontFamily: fonts.ui,
@@ -195,9 +209,9 @@ const styles = StyleSheet.create({
   rows: {
     flexShrink: 0,
     fontFamily: fonts.ui,
-    fontSize: 10.5,
-    lineHeight: 13,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
     fontVariant: ["tabular-nums"],
   },
   marks: {

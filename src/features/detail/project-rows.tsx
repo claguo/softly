@@ -122,7 +122,7 @@ const styles = StyleSheet.create({
   },
   note: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
   },
 });

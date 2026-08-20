@@ -27,7 +27,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { COLOR_FAMILIES, colorFamily } from '@/data';
 import { ColorTuner } from '@/features/stash/color-tuner';
-import { fonts, radius, space, trackMicro, type, useTheme } from '@/theme';
+import { fonts, radius, space, trackSmall, type, useTheme } from '@/theme';
 
 export type ColorGridProps = {
   /** Ravelry's `color_family_id`, or null for nothing chosen. */
@@ -202,14 +202,14 @@ const styles = StyleSheet.create({
   name: {
     flexShrink: 1,
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   clear: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
 });

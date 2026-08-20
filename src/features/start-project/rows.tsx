@@ -23,7 +23,7 @@ import type { NeedleListRow, RavelryYarnSummary, StashListRow } from '@/data';
 import { decimal } from '@/features/detail/raw';
 import type { SizeOption } from '@/features/start-project/needle-sizes';
 import { yarnMeta, yarnPhoto, yarnTitle } from '@/features/start-project/use-yarn-search';
-import { fonts, radius, space, tap, trackMicro, type, useTheme } from '@/theme';
+import { fonts, radius, space, tap, trackSmall, type, useTheme } from '@/theme';
 
 /** Ravelry's needle kinds arrive lowercase. Sentence case, never all-caps. */
 function sentence(value: string): string {
@@ -419,7 +419,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui,
     fontSize: 8.5,
     lineHeight: 10,
-    letterSpacing: trackMicro,
+    letterSpacing: trackSmall,
     marginTop: 2,
   },
   addRow: {
@@ -463,8 +463,8 @@ const styles = StyleSheet.create({
   /** The stamped line a row carries, for somewhere already padded. */
   note: {
     fontFamily: fonts.ui,
-    fontSize: type.micro.fontSize,
-    lineHeight: type.micro.lineHeight,
-    letterSpacing: trackMicro,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
 });
