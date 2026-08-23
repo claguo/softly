@@ -115,12 +115,30 @@ export function readParam(param: string | string[] | undefined): string | null {
   return readString(Array.isArray(param) ? param[0] : param);
 }
 
-/** The route param, which is a string on the way in and an id on the way out. */
+/**
+ * The route param, which is a string on the way in and an id on the way out.
+ *
+ * Any whole number but nought. It used to insist on a positive one, which was
+ * true of every id in the app on the day it was written and has not been true
+ * since: the rows this app writes for itself — a needle out of the local
+ * drawer, a pattern that is not on Ravelry — are numbered *down* from the clock
+ * precisely so they can share a key space with Ravelry's own without ever
+ * colliding, so `/needle/-1755000000000` is a perfectly good route and was
+ * being answered with "Needle unavailable." on exactly the rows those screens
+ * exist to serve.
+ *
+ * Nought stays refused along with decimals and anything unparseable: no table
+ * here issues it, so a nought is a malformed link rather than a record.
+ *
+ * A screen that really does want a Ravelry id and nothing else — the pattern
+ * detail, which would otherwise ask the API about a pattern that cannot exist —
+ * says so itself, at the one place that knows.
+ */
 export function readId(param: string | string[] | undefined): number | null {
   const value = readParam(param);
   if (value === null) {
     return null;
   }
   const id = Number(value);
-  return Number.isInteger(id) && id > 0 ? id : null;
+  return Number.isInteger(id) && id !== 0 ? id : null;
 }

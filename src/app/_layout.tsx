@@ -116,6 +116,11 @@ function RootNavigator() {
             the app's own drawer rather than to Ravelry, which has no way of
             being told about a needle. */}
         <Stack.Screen name="add-needle" options={{ presentation: 'modal' }} />
+        {/* And a pattern Ravelry has never heard of, which is most of them: a
+            leaflet from a wool show, a chart out of a magazine. Same card, same
+            terms — this one writes to the app's own shelf, because there is no
+            endpoint anywhere that would put a pattern into Ravelry. */}
+        <Stack.Screen name="add-pattern" options={{ presentation: 'modal' }} />
         {/* Editing is the same decision as adding, said a second time over a
             thing that already exists, so both take the same card and the same
             downward throw out of it. Two of these three are also where a thing
@@ -126,6 +131,7 @@ function RootNavigator() {
         <Stack.Screen name="edit-project" options={{ presentation: 'modal' }} />
         <Stack.Screen name="edit-yarn" options={{ presentation: 'modal' }} />
         <Stack.Screen name="edit-needle" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="edit-pattern" options={{ presentation: 'modal' }} />
         {/* And a row counter, which like the needle drawer is the app's own
             note about something Ravelry has nowhere to keep. Both halves are a
             card on the same terms as the sheets above: naming a counter is a
@@ -145,6 +151,11 @@ function RootNavigator() {
             costs nothing when signed in; it is the only way to say that a
             `softly://pattern/123` link is not a way in. */}
         <Stack.Screen name="pattern/[id]" />
+        {/* The same detail screen for the patterns that are only ever on this
+            phone. A separate route rather than a branch inside `pattern/[id]`
+            because they share nothing: that one is a live fetch against
+            Ravelry, and this one is a row nobody else has a copy of. */}
+        <Stack.Screen name="custom-pattern/[id]" />
         <Stack.Screen name="project/[id]" />
         <Stack.Screen name="yarn/[id]" />
         <Stack.Screen name="needle/[id]" />

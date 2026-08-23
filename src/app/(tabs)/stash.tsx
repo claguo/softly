@@ -1,14 +1,22 @@
 /**
- * Stash — yarn, hardware and the account, in one scroll.
+ * Stash — yarn, hardware, patterns and the account, in one scroll.
  *
- * Two sections in a single list rather than two lists: the needles are a flush
- * run of rows sharing hairlines, and only one scroll container can keep them
- * edge to edge under the same sync strip.
+ * Three sections in a single list rather than three lists: the needles and the
+ * patterns are flush runs of rows sharing hairlines, and only one scroll
+ * container can keep them edge to edge under the same sync strip.
  *
- * Each section label carries an Add across from it, opening the same two sheets
- * Cast on opens — this is the other door to them, and the one a knitter who is
- * not starting a project would look for. Neither is asked to hand anything
- * back here; see `pending-selection` for what that means and why it matters.
+ * Each section label carries an Add across from it. Two of them open the same
+ * sheets Cast on opens — this is the other door to those, and the one a knitter
+ * who is not starting a project would look for. Neither is asked to hand
+ * anything back here; see `pending-selection` for what that means and why it
+ * matters.
+ *
+ * The third is Patterns, and it is not a mirror of anything. It is everything
+ * this phone can open: the PDFs downloaded or imported against a Ravelry
+ * pattern, and the patterns typed in by hand because Ravelry has never heard of
+ * them — a leaflet from a wool show, a chart out of a magazine. One
+ * alphabetical list, because from the knitter's side they are the same thing;
+ * see `usePatternShelf` for how two very different rows arrive at one shape.
  *
  * There is no You tab any more, so this screen is also where the Ravelry
  * account lives. Signed out it is the whole screen: nothing here exists without
@@ -52,19 +60,24 @@ import {
 
 import { useAuth } from "@/auth/context";
 import { ScreenHeader } from "@/components/screen-header";
+import { Badge } from "@/components/ui/badge";
 import { NeedleRow } from "@/components/ui/needle-row";
 import { SwipeRow } from "@/components/ui/swipe-row";
 import { YarnCard } from "@/components/ui/yarn-card";
 import {
+  deleteCustomPattern,
   deleteLocalNeedle,
+  deletePatternPdf,
   deleteStashEntry,
   fillStashPhotos,
   forgetYarnColor,
   refreshStash,
   tintFor,
   useNeedles,
+  usePatternShelf,
   useStash,
   type NeedleListRow,
+  type PatternShelfRow,
   type StashListRow,
 } from "@/data";
 import { triage, type Problem } from "@/features/start-project/problem";
@@ -82,17 +95,18 @@ import {
 } from "@/theme";
 
 /**
- * One list, three row shapes: tagged so the renderer never has to guess.
+ * One list, four row shapes: tagged so the renderer never has to guess.
  *
- * `empty` is a line where the rows would be. Both sections stay on screen even
- * with nothing under them, which they did not used to — an empty section used
- * to be dropped whole. The Add beside each label is why: the knitter with no
- * yarn at all is exactly the one who needs the button, and a heading that
- * disappears takes its button with it.
+ * `empty` is a line where the rows would be. Every section stays on screen even
+ * with nothing under it, which they did not used to — an empty section used to
+ * be dropped whole. The Add beside each label is why: the knitter with no yarn
+ * at all is exactly the one who needs the button, and a heading that disappears
+ * takes its button with it.
  */
 type StashItem =
   | { kind: "yarn"; yarn: StashListRow }
   | { kind: "needle"; needle: NeedleListRow }
+  | { kind: "pattern"; pattern: PatternShelfRow }
   | { kind: "empty"; line: string };
 
 type StashSection = {
@@ -211,6 +225,104 @@ const NeedleItem = memo(function NeedleItem({
   );
 });
 
+/**
+ * One line on the pattern shelf.
+ *
+ * The needle rows' structure without the swatch: a flush ruled row, the name on
+ * top, whatever else identifies it underneath, and the marks on the right. It
+ * is drawn here rather than in `components/ui` because nothing else in the app
+ * has a use for it — the pattern cards on Saves and Discover carry a photograph
+ * and a price, and neither of those exists for a file on the phone.
+ *
+ * Two marks, and the pair is the whole point of the row. `offline` is the same
+ * aqua dot the pattern cards wear for a downloaded file, which is what says
+ * this one opens on a train. The neutral one says the opposite kind of thing:
+ * not a state, a fact about where the pattern came from, and the reason
+ * searching Ravelry for it will never turn it up.
+ */
+const PatternItem = memo(function PatternItem({
+  row,
+  onDelete,
+  onRemoveDownload,
+}: {
+  row: PatternShelfRow;
+  onDelete: (id: number) => void;
+  onRemoveDownload: (id: number) => void;
+}) {
+  const { colors } = useTheme();
+
+  const open = useCallback(() => {
+    haptics.tap();
+    if (row.custom) {
+      router.push({
+        pathname: "/custom-pattern/[id]",
+        params: { id: row.id },
+      });
+    } else {
+      router.push({ pathname: "/pattern/[id]", params: { id: row.id } });
+    }
+  }, [row.custom, row.id]);
+
+  return (
+    <SwipeRow
+      // The two rows mean different things by a swipe, and the button says
+      // which. A custom pattern is a record that exists nowhere else, so the
+      // gesture takes the whole thing away — and its PDF with it, since nothing
+      // will ever collect a file keyed by an id this app made up. A Ravelry
+      // pattern's row *is* the file: the pattern itself is still on ravelry.com
+      // and still one tap away, so only the copy goes.
+      label={row.custom ? "Delete" : "Remove"}
+      // Asked twice on the one that cannot be got back. A download can be
+      // fetched again; a pattern typed off a leaflet cannot.
+      confirmLabel={row.custom ? "Tap again" : undefined}
+      accessibilityLabel={
+        row.custom ? "Delete this pattern" : "Remove this download"
+      }
+      confirmAccessibilityLabel="Tap again to delete this pattern"
+      onCommit={() => (row.custom ? onDelete(row.id) : onRemoveDownload(row.id))}
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={
+          row.secondary === null ? row.name : `${row.name}, ${row.secondary}`
+        }
+        onPress={open}
+        style={({ pressed }) => [
+          styles.patternRow,
+          { borderBottomColor: colors.hairline },
+          pressed ? { backgroundColor: colors.surfaceSunk } : null,
+        ]}
+      >
+        <View style={styles.patternBody}>
+          <Text
+            numberOfLines={1}
+            style={[styles.patternName, { color: colors.ink }]}
+          >
+            {row.name}
+          </Text>
+          {row.secondary === null ? null : (
+            <Text
+              numberOfLines={1}
+              style={[styles.patternSecondary, { color: colors.ink2 }]}
+            >
+              {row.secondary}
+            </Text>
+          )}
+        </View>
+
+        <View style={styles.patternMarks}>
+          {row.custom ? <Badge tone="neutral">not on Ravelry</Badge> : null}
+          {row.offline ? (
+            <Badge tone="offline" dot>
+              downloaded
+            </Badge>
+          ) : null}
+        </View>
+      </Pressable>
+    </SwipeRow>
+  );
+});
+
 /** A section with nothing in it yet, said once and quietly. */
 const EmptyLine = memo(function EmptyLine({ line }: { line: string }) {
   const { colors } = useTheme();
@@ -224,6 +336,8 @@ const keyForStashItem = (item: StashItem) => {
       return `yarn-${item.yarn.id}`;
     case "needle":
       return `needle-${item.needle.id}`;
+    case "pattern":
+      return `pattern-${item.pattern.id}`;
     case "empty":
       return `empty-${item.line}`;
   }
@@ -235,6 +349,7 @@ export default function StashScreen() {
   const { status, user, signIn, signOut } = useAuth();
   const { data: yarn } = useStash();
   const { data: needles } = useNeedles();
+  const { data: patterns } = usePatternShelf();
 
   const signedIn = status === "signedIn";
   const username = user?.username ?? null;
@@ -304,7 +419,12 @@ export default function StashScreen() {
 
   const addNeedle = useCallback(() => router.push("/add-needle"), []);
 
-  // Both sections, always, signed in — see the note on `StashItem`. Signed out
+  // The one Add on this screen that opens nothing Cast on has: there is no
+  // route into Ravelry for a pattern it does not have, so this sheet is the
+  // only door there is.
+  const addPattern = useCallback(() => router.push("/add-pattern"), []);
+
+  // Every section, always, signed in — see the note on `StashItem`. Signed out
   // there are none at all, and the sign-in below takes the whole screen.
   const sections = useMemo<StashSection[]>(() => {
     if (!signedIn) {
@@ -330,8 +450,17 @@ export default function StashScreen() {
             ? [{ kind: "empty", line: "No needles recorded." }]
             : needles.map((row) => ({ kind: "needle", needle: row })),
       },
+      {
+        title: "Patterns",
+        addLabel: "Add a pattern",
+        onAdd: addPattern,
+        data:
+          patterns.length === 0
+            ? [{ kind: "empty", line: "Nothing on this phone to read yet." }]
+            : patterns.map((row) => ({ kind: "pattern", pattern: row })),
+      },
     ];
-  }, [addNeedle, addYarn, needles, signedIn, yarn]);
+  }, [addNeedle, addPattern, addYarn, needles, patterns, signedIn, yarn]);
 
   // The thumbnails and the fibre content are fetched a yarn at a time and kept
   // (see `yarn-photos.ts`). Asking here rather than only after a sync is what
@@ -408,6 +537,37 @@ export default function StashScreen() {
     }
   }, []);
 
+  /**
+   * A pattern off the shelf, and the file that hung off it.
+   *
+   * Nothing leaves and nothing is asked: this is a row this app wrote, and
+   * `deleteCustomPattern` takes the PDF with it because a file keyed by an id
+   * this app made up will never be collected by anything else. Synchronous, so
+   * there is no busy window to draw; the row is gone before the finger is off
+   * it, because `usePatternShelf` is listening to the same update.
+   */
+  const removePattern = useCallback((id: number) => {
+    if (deleteCustomPattern(id)) {
+      haptics.warning();
+    } else {
+      haptics.error();
+    }
+  }, []);
+
+  /**
+   * The copy, and only the copy.
+   *
+   * The pattern itself is Ravelry's and is still one tap away on its own
+   * screen — what goes here is the few hundred kilobytes on the phone, which is
+   * the only thing this row was ever about. `deletePatternPdf` moves the file
+   * and the row together and says nothing either way, so there is nothing to
+   * report and nothing that can be half-done.
+   */
+  const removeDownload = useCallback((id: number) => {
+    deletePatternPdf(id);
+    haptics.warning();
+  }, []);
+
   const renderStashItem = useCallback(
     ({ item }: { item: StashItem }) => {
       switch (item.kind) {
@@ -421,11 +581,19 @@ export default function StashScreen() {
           );
         case "needle":
           return <NeedleItem row={item.needle} onDelete={removeNeedle} />;
+        case "pattern":
+          return (
+            <PatternItem
+              row={item.pattern}
+              onDelete={removePattern}
+              onRemoveDownload={removeDownload}
+            />
+          );
         case "empty":
           return <EmptyLine line={item.line} />;
       }
     },
-    [deletingYarn, removeNeedle, removeYarn],
+    [deletingYarn, removeDownload, removeNeedle, removePattern, removeYarn],
   );
 
   const renderSectionHeader = useCallback(
@@ -715,6 +883,39 @@ const styles = StyleSheet.create({
     fontSize: type.small.fontSize,
     lineHeight: type.small.lineHeight,
     letterSpacing: trackSmall,
+  },
+  // `NeedleRow`'s metrics without the swatch: a flush run of rows sharing
+  // hairlines, on the same 48pt floor and the same 12pt padding, so the two
+  // sections below the yarn read as one drawer with a rule between them.
+  patternRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.s3,
+    minHeight: tap.min,
+    padding: space.s3,
+    borderBottomWidth: 1,
+  },
+  patternBody: {
+    flex: 1,
+    // Without this a long name refuses to ellipsise and pushes the marks off
+    // the right edge instead: a flex child's minimum is its content.
+    minWidth: 0,
+    gap: 2,
+  },
+  patternName: {
+    fontFamily: fonts.uiMedium,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+  },
+  patternSecondary: {
+    fontFamily: fonts.ui,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+  },
+  patternMarks: {
+    flexShrink: 0,
+    alignItems: "flex-end",
+    gap: 4,
   },
   emptyLine: {
     fontFamily: fonts.ui,

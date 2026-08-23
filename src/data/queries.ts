@@ -19,10 +19,11 @@
  * fields nobody has promoted to a column yet.
  */
 
-import { desc, eq, getTableColumns, getTableName, sql } from 'drizzle-orm';
+import { desc, eq, getTableColumns, getTableName, gt, sql } from 'drizzle-orm';
 import { addDatabaseChangeListener } from 'expo-sqlite';
 import { useCallback, useSyncExternalStore } from 'react';
 
+import { getCustomPattern } from '@/data/custom-patterns';
 import { db } from '@/data/db';
 import { patternPdfSnapshot, subscribeToPatternPdfs } from '@/data/pdfs';
 import {
@@ -31,6 +32,7 @@ import {
   subscribeToProjectDetails,
 } from '@/data/project-detail';
 import {
+  customPatterns,
   favorites,
   needles,
   patternPdfs,
@@ -39,6 +41,7 @@ import {
   stash,
   yarnColors,
   yarnPhotos,
+  type CustomPatternRow,
   type FavoriteRow,
   type NeedleRow,
   type PatternPdfRow,
@@ -152,6 +155,153 @@ const selectProjects = () =>
     .orderBy(desc(projects.updatedAtRemote))
     .all();
 
+/**
+ * One line on the pattern shelf: something readable on this device.
+ *
+ * Two very different rows arrive at the same shape here, which is the whole
+ * point of the type. A **custom pattern** is a record this app wrote because
+ * Ravelry has nowhere to keep it, and it may or may not have a file attached. A
+ * **downloaded pattern** is the other way round — the file is the only reason
+ * the row exists, and everything readable about it has to be borrowed from a
+ * bookmark or a project, or failing both, read off the filename.
+ *
+ * `id` is the key either way, negative for the first kind and Ravelry's own for
+ * the second, which is also how a tap knows which screen to open.
+ */
+export type PatternShelfRow = {
+  readonly id: number;
+  /** True for a row this app wrote; false for a Ravelry pattern's download. */
+  readonly custom: boolean;
+  readonly name: string;
+  /** The designer, or where it is from, or the file's own name. */
+  readonly secondary: string | null;
+  /** A PDF for this pattern is on the device. Always true for a download. */
+  readonly offline: boolean;
+};
+
+/** Whether this custom pattern has a PDF; see `favoriteHasPdf` for the idiom. */
+const shelfHasPdf = sql<boolean>`${patternPdfs.patternId} is not null`.mapWith(Boolean);
+
+/** ".pdf" off the end, so a row reads as a pattern's name and not as a file. */
+function withoutExtension(filename: string): string {
+  return filename.replace(/\.pdf$/i, '');
+}
+
+/**
+ * Alphabetical the way a person reads it, case ignored.
+ *
+ * The same rule the stash list gets from `collate nocase`, said in JavaScript
+ * because this list is two queries merged rather than one table sorted — there
+ * is no `order by` that could span both halves. Ids break a tie, so the order
+ * is stable rather than however the merge happened to fall. No `localeCompare`:
+ * this has to answer identically on every device, and a collation that changes
+ * with the phone's language would reshuffle the shelf on a flight.
+ */
+function byName(left: PatternShelfRow, right: PatternShelfRow): number {
+  const a = left.name.toLowerCase();
+  const b = right.name.toLowerCase();
+
+  if (a === b) {
+    return left.id - right.id;
+  }
+
+  return a < b ? -1 : 1;
+}
+
+/**
+ * Everything about a pattern that is on this phone, in one list.
+ *
+ * The two halves cannot be one query. Custom patterns are rows that may have a
+ * file; downloads are files that may have a row somewhere to be named from —
+ * and the naming is a chain of fallbacks across two tables that a `union` would
+ * have to spell twice. So they are selected apart, given the same shape, and
+ * sorted together.
+ *
+ * The downloads half joins wide on purpose: a pattern can be bookmarked and
+ * knitted twice over, so one `pattern_pdfs` row can come back three times. They
+ * are folded back into one entry that takes the first name and the first
+ * designer anything offered, which is why this walks the rows rather than
+ * trusting `group by` to pick a sensible one.
+ */
+const selectPatternShelf = (): PatternShelfRow[] => {
+  const shelf: PatternShelfRow[] = db
+    .select({
+      id: customPatterns.id,
+      name: customPatterns.name,
+      designer: customPatterns.designer,
+      sourceName: customPatterns.sourceName,
+      offline: shelfHasPdf.as('offline'),
+    })
+    .from(customPatterns)
+    .leftJoin(patternPdfs, eq(customPatterns.id, patternPdfs.patternId))
+    .all()
+    .map((row) => ({
+      id: row.id,
+      custom: true,
+      name: row.name,
+      // The designer if there is one, and otherwise where it came from: on a
+      // pattern out of a magazine that second line is the more useful of the
+      // two anyway, and on one with neither the row is a name and nothing else.
+      secondary: row.designer ?? row.sourceName,
+      offline: row.offline,
+    }));
+
+  const downloaded = db
+    .select({
+      id: patternPdfs.patternId,
+      filename: patternPdfs.filename,
+      favoriteName: favorites.name,
+      favoriteDesigner: favorites.designer,
+      projectName: projects.patternName,
+      projectDesigner: projects.designer,
+    })
+    .from(patternPdfs)
+    .leftJoin(favorites, eq(patternPdfs.patternId, favorites.patternId))
+    .leftJoin(projects, eq(patternPdfs.patternId, projects.patternId))
+    // Negative ids are the custom patterns' own files, already counted above.
+    .where(gt(patternPdfs.patternId, 0))
+    .all();
+
+  const folded = new Map<number, { filename: string | null; name: string | null; designer: string | null }>();
+
+  for (const row of downloaded) {
+    const found = folded.get(row.id);
+    // The bookmark first: it is the pattern's own record, where a project's
+    // copy is what the knitter called it when they cast on.
+    const name = row.favoriteName ?? row.projectName ?? null;
+    const designer = row.favoriteDesigner ?? row.projectDesigner ?? null;
+
+    folded.set(
+      row.id,
+      found === undefined
+        ? { filename: row.filename, name, designer }
+        : {
+            filename: found.filename ?? row.filename,
+            name: found.name ?? name,
+            designer: found.designer ?? designer,
+          },
+    );
+  }
+
+  for (const [id, entry] of folded) {
+    shelf.push({
+      id,
+      custom: false,
+      // Nothing in the mirror knows this pattern: the file's own name is the
+      // last thing left, and it is usually the designer's own title anyway.
+      name:
+        entry.name ??
+        (entry.filename === null ? 'Downloaded pattern' : withoutExtension(entry.filename)),
+      // The filename only where it is not already the title above — printing it
+      // twice would be printing it twice.
+      secondary: entry.designer ?? (entry.name === null ? null : entry.filename),
+      offline: true,
+    });
+  }
+
+  return shelf.sort(byName);
+};
+
 export type FavoriteListRow = ReturnType<typeof selectFavorites>[number];
 export type StashListRow = ReturnType<typeof selectStash>[number];
 export type NeedleListRow = ReturnType<typeof selectNeedles>[number];
@@ -250,6 +400,20 @@ const projectsStore = createLiveStore(
   [getTableName(projects), getTableName(patternPhotos)],
   selectProjects,
 );
+// Four tables, because the shelf reads from four: the patterns this app wrote,
+// the files on the device, and the two places a downloaded pattern's name can
+// be borrowed from. Leaving any of them off would strand the list — a PDF
+// finishing its download, or a sync finally naming one, would go unnoticed
+// until something else happened to throw the snapshot away.
+const patternShelfStore = createLiveStore(
+  [
+    getTableName(customPatterns),
+    getTableName(patternPdfs),
+    getTableName(favorites),
+    getTableName(projects),
+  ],
+  selectPatternShelf,
+);
 
 function useLiveRows<TRow>(store: LiveStore<TRow>): LiveRows<TRow> {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
@@ -316,7 +480,11 @@ const stashRows = createRowVersion([
 
 const projectRows = createRowVersion([getTableName(projects)]);
 
+const customPatternRows = createRowVersion([getTableName(customPatterns)]);
+
 let cachedStashEntry: { id: number; version: number; row: StashEntryRow | null } | null = null;
+let cachedCustomPattern: { id: number; version: number; row: CustomPatternRow | null } | null =
+  null;
 let cachedProject: { id: number; version: number; row: ProjectRow | null } | null = null;
 let cachedProjectDetail: {
   id: number;
@@ -338,6 +506,17 @@ export function useNeedles(): LiveRows<NeedleListRow> {
 
 export function useProjects(): LiveRows<ProjectListRow> {
   return useLiveRows(projectsStore);
+}
+
+/**
+ * Every pattern this phone can open: the ones typed in, and the ones downloaded.
+ *
+ * The Stash tab's third section. See `PatternShelfRow` for why two unrelated
+ * kinds of row come out of one hook, and `selectPatternShelf` for how they are
+ * named and ordered.
+ */
+export function usePatternShelf(): LiveRows<PatternShelfRow> {
+  return useLiveRows(patternShelfStore);
 }
 
 /** The sync store from `sync.ts`, wired into React. */
@@ -498,6 +677,42 @@ export function useProject(id: number | null): ProjectRow | null {
   }, [id]);
 
   return useSyncExternalStore(projectRows.subscribe, getSnapshot, getSnapshot);
+}
+
+/**
+ * One custom pattern, live.
+ *
+ * Live rather than one-shot for the same reason `useProject` is: the write that
+ * changes this row lands under the screen that is already showing it. Edit a
+ * pattern and the sheet dismisses onto the detail screen behind it, which never
+ * unmounted — a read memoised on the id would still be drawing the old name.
+ *
+ * `null` for a row that is not there, and for no id at all, which is what an
+ * unreadable route param passes in.
+ */
+export function useCustomPattern(id: number | null): CustomPatternRow | null {
+  const getSnapshot = useCallback(() => {
+    if (id === null) {
+      return null;
+    }
+
+    // Referentially stable between versions, or `useSyncExternalStore` would
+    // re-render on every check: a fresh row object is a fresh snapshot.
+    if (
+      cachedCustomPattern !== null &&
+      cachedCustomPattern.id === id &&
+      cachedCustomPattern.version === customPatternRows.current()
+    ) {
+      return cachedCustomPattern.row;
+    }
+
+    const row = getCustomPattern(id);
+    cachedCustomPattern = { id, version: customPatternRows.current(), row };
+
+    return row;
+  }, [id]);
+
+  return useSyncExternalStore(customPatternRows.subscribe, getSnapshot, getSnapshot);
 }
 
 /**

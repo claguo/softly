@@ -39,6 +39,15 @@
  * `importPatternPdf` for the far more common pattern whose PDF was never
  * Ravelry's to send, and `deletePatternPdf` for taking it away again.
  *
+ * The patterns that are not on Ravelry at all are the app's own the same way
+ * the needle drawer is, and nothing about one is ever sent anywhere:
+ * `insertCustomPattern`, `updateCustomPattern` and `deleteCustomPattern` write
+ * them — the delete takes the PDF with it, since nothing else will ever collect
+ * a file keyed by an id this app made up — and `getCustomPattern` and
+ * `useCustomPattern` read one. `usePatternShelf` is the other half of that
+ * story: every pattern this phone can open, the typed-in ones and the
+ * downloaded ones in one alphabetical list, which is what the Stash tab draws.
+ *
  * Row counters are the app's own the way the local needles are — Ravelry has
  * no notion of one, so nothing about them is ever sent anywhere.
  * `useRowCounters` is the counters on a project, `useRowCountersForProjects`
@@ -181,6 +190,14 @@ export {
 } from '@/data/local';
 
 export {
+  deleteCustomPattern,
+  getCustomPattern,
+  insertCustomPattern,
+  updateCustomPattern,
+  type CustomPatternDraft,
+} from '@/data/custom-patterns';
+
+export {
   adjustRowCounter,
   deleteRowCounter,
   getRowCounter,
@@ -221,10 +238,12 @@ export {
   getProjectById,
   getProjectIdsByPatternId,
   getStashById,
+  useCustomPattern,
   useStashEntry,
   useFavorites,
   useNeedles,
   usePatternPdf,
+  usePatternShelf,
   useProject,
   useProjectDetail,
   useProjects,
@@ -233,12 +252,14 @@ export {
   type FavoriteListRow,
   type LiveRows,
   type NeedleListRow,
+  type PatternShelfRow,
   type ProjectListRow,
   type StashEntryRow,
   type StashListRow,
 } from '@/data/queries';
 
 export {
+  customPatterns,
   favorites,
   needles,
   NEEDLE_SOURCES,
@@ -252,6 +273,8 @@ export {
   syncState,
   yarnColors,
   yarnPhotos,
+  type CustomPatternInsert,
+  type CustomPatternRow,
   type FavoriteRow,
   type NeedleRow,
   type NeedleSource,

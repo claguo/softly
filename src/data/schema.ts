@@ -388,6 +388,58 @@ export const rowCounters = sqliteTable(
 );
 
 /**
+ * A pattern that is not on Ravelry, written down by hand.
+ *
+ * The third table after the local needles and the row counters that is not a
+ * copy of anything, and it exists for the same reason both of those do: there
+ * is nowhere else for it to be. Ravelry's pattern database is a catalogue of
+ * published designs — a leaflet out of a magazine, a chart a friend wrote out,
+ * something bought at a wool show from a dyer who has never listed anything
+ * anywhere is simply not in it, and there is no endpoint that would put it
+ * there. So the knitter types it here and it stays here. `sync.ts` never reads
+ * or writes this table.
+ *
+ * Ids are negative and app-assigned, the same trick and for the same reason as
+ * `needles`: a custom pattern shares the `pattern_pdfs` key space with
+ * Ravelry's own pattern ids, which are positive and unpredictable, so a
+ * negative id lets one of these carry a PDF through the very same import
+ * pipeline without ever colliding with a real pattern. See `custom-patterns.ts`.
+ *
+ * Every field but the name is free text and nullable, because this is a knitter
+ * copying what is on a leaflet rather than filling in a form: a name alone is a
+ * perfectly good record of a pattern that exists nowhere else.
+ */
+export const customPatterns = sqliteTable(
+  'custom_patterns',
+  {
+    // App-assigned and negative — see the note above and `freeLocalId`.
+    id: integer('id').primaryKey(),
+    /** The one thing that has to be there. Everything else is optional. */
+    name: text('name').notNull(),
+    designer: text('designer'),
+    /**
+     * Where it is from, in the knitter's own words: a shop, a magazine and
+     * issue, a website, a person. Named `source_name` rather than `source`
+     * because the other two tables that carry a `source` use it for a closed
+     * set of provenances this app checks against — this one is a sentence
+     * nobody parses, and the two meanings should not share a word.
+     */
+    sourceName: text('source_name'),
+    /** "820 yd", "roughly 4 skeins" — as written on the leaflet. */
+    yardage: text('yardage'),
+    /** "4.5 mm, 3.75 mm for ribbing". Free text, not the size table. */
+    needleSizes: text('needle_sizes'),
+    /** "22 sts x 30 rows = 4 in". */
+    gauge: text('gauge'),
+    notes: text('notes'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  // Every read of this table is the shelf on Stash, which is alphabetical.
+  (table) => [index('custom_patterns_name_idx').on(table.name)],
+);
+
+/**
  * Every table, in the order `db.ts` creates them.
  *
  * Appending one is the whole migration: `create table if not exists` runs over
@@ -407,6 +459,7 @@ export const tables = [
   yarnColors,
   syncState,
   rowCounters,
+  customPatterns,
 ] as const;
 
 export type FavoriteRow = typeof favorites.$inferSelect;
@@ -419,6 +472,7 @@ export type YarnPhotoRow = typeof yarnPhotos.$inferSelect;
 export type YarnColorRow = typeof yarnColors.$inferSelect;
 export type PatternPhotoRow = typeof patternPhotos.$inferSelect;
 export type RowCounterRow = typeof rowCounters.$inferSelect;
+export type CustomPatternRow = typeof customPatterns.$inferSelect;
 export type SyncStateRow = typeof syncState.$inferSelect;
 
 export type FavoriteInsert = typeof favorites.$inferInsert;
@@ -427,3 +481,4 @@ export type NeedleInsert = typeof needles.$inferInsert;
 export type ProjectInsert = typeof projects.$inferInsert;
 export type PatternPdfInsert = typeof patternPdfs.$inferInsert;
 export type RowCounterInsert = typeof rowCounters.$inferInsert;
+export type CustomPatternInsert = typeof customPatterns.$inferInsert;

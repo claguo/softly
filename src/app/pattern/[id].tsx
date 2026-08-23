@@ -97,7 +97,15 @@ import Feather from "@react-native-vector-icons/feather";
 import { router, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -145,7 +153,7 @@ import { hasNotes, RichText } from "@/features/detail/rich-text";
 // on and borrowed here for the fourth: a bookmark fails the same three ways.
 import { triage, type Problem } from "@/features/start-project/problem";
 import { haptics } from "@/haptics";
-import { fonts, space, trackSmall, type, useTheme } from "@/theme";
+import { fonts, radius, space, trackSmall, type, useTheme } from "@/theme";
 
 type PatternState = {
   /** The request has answered, one way or the other. */
@@ -263,7 +271,7 @@ const SAVED_KEYS = ["favorited", "favorite", "is_favorite", "bookmarked"];
 const LIBRARY_KEYS = ["in_library", "library", "is_in_library", "owned"];
 const QUEUED_KEYS = ["queued", "in_queue", "is_queued", "queue"];
 
-/** The biggest photo Ravelry offers, since this frame is the width of the screen. */
+/** The biggest photo Ravelry offers, since every frame here is the width of the screen. */
 const HERO_KEYS = [
   ["medium2_url"],
   ["medium_url"],
@@ -272,64 +280,46 @@ const HERO_KEYS = [
   ["square_url"],
 ] as const;
 
-function heroPhoto(pattern: RavelryPatternDetail): string | undefined {
-  const photos = pattern.photos;
-  const candidates = [
-    Array.isArray(photos) ? photos[0] : null,
-    pattern.first_photo,
-  ];
-
-  for (const candidate of candidates) {
-    const url = firstString(candidate, HERO_KEYS);
-    if (url !== null) {
-      return url;
-    }
-  }
-
-  return undefined;
-}
-
-/**
- * The same list read the other way round, smallest usable file first. The hero
- * asks for the biggest thing Ravelry has because it is drawn the width of the
- * screen; the strip below it is 96pt squares, so a square crop is the right
- * file to ask for and a screen-wide JPEG is only a slower way to draw one. The
- * keys are `projectPhotos`', for the identical strip on the project screen.
- */
-const STRIP_KEYS = [
-  ["square_url"],
-  ["small_url"],
-  ["small2_url"],
-  ["medium_url"],
-] as const;
-
 /**
  * Every photograph on the pattern, in Ravelry's own order.
  *
- * `photos` is the whole array and it is already in memory — the detail payload
- * has carried it all along, and this screen was drawing one frame out of it.
- * Only that field is read: on `/patterns/{id}.json` `first_photo` comes back
- * null, and the hero already covers the reverse case for the one frame it
- * draws.
+ * `photos` is the whole array and it has been in memory all along — the detail
+ * payload has always carried it, and this screen used to draw one frame out of
+ * it and let the rest go. Every one of them is read at hero resolution now,
+ * because every one of them is a full page of the frame at the top of the
+ * screen: the same file the first picture always asked for, asked for the
+ * others too.
  *
- * A photo with none of the four keys on it is dropped rather than stood in
+ * A photo with none of the five keys on it is dropped rather than stood in
  * for. The frame's striped placeholder means "no picture yet", which is a
- * sentence about a pattern, not about a file Ravelry declined to size.
+ * sentence about a pattern, not about a file Ravelry declined to size — and a
+ * blank page in the middle of a swipe is the wrong frame where a missing one
+ * would do.
+ *
+ * `first_photo` is the last resort rather than the first, which is the reverse
+ * of how it reads. On `/patterns/{id}.json` it comes back null and the array is
+ * the whole answer; the other way round happens too, and one photograph beats
+ * the stripes.
  */
-function stripPhotos(pattern: RavelryPatternDetail): string[] {
+function heroPhotos(pattern: RavelryPatternDetail): string[] {
   const photos = pattern.photos;
-
-  if (!Array.isArray(photos)) {
-    return [];
-  }
-
   const urls: string[] = [];
 
-  for (const photo of photos) {
-    const url = firstString(photo, STRIP_KEYS);
+  if (Array.isArray(photos)) {
+    for (const photo of photos) {
+      const url = firstString(photo, HERO_KEYS);
 
-    if (url !== null) {
-      urls.push(url);
+      if (url !== null) {
+        urls.push(url);
+      }
+    }
+  }
+
+  if (urls.length === 0) {
+    const only = firstString(pattern.first_photo, HERO_KEYS);
+
+    if (only !== null) {
+      urls.push(only);
     }
   }
 
@@ -427,7 +417,20 @@ export default function PatternScreen() {
   const { status, user } = useAuth();
   const { id: param } = useLocalSearchParams<"/pattern/[id]">();
 
-  const id = readId(param);
+  /**
+   * Ravelry's, and only Ravelry's.
+   *
+   * `readId` takes any whole number now, because the rows this app writes for
+   * itself are numbered downward from the clock — see the note on it. This
+   * screen is the one place that cannot accept those: everything below it asks
+   * Ravelry about the id, and there is no pattern −1755000000000 to be told
+   * about. A custom pattern has a screen of its own and never links here, so
+   * this is defence against a hand-typed link rather than a path anything
+   * takes; refused, it falls through to the same "Pattern unavailable." a
+   * missing param already lands on.
+   */
+  const routeId = readId(param);
+  const id = routeId !== null && routeId > 0 ? routeId : null;
   const username = user?.username ?? null;
   // Synchronous, so the saved copy is on screen before the request leaves.
   const cached = useMemo(
@@ -695,18 +698,62 @@ export default function PatternScreen() {
     (pattern === null ? null : designerName(pattern)) ??
     cached?.designer ??
     null;
-  const photo =
-    (pattern === null ? undefined : heroPhoto(pattern)) ??
-    cached?.photoUrl ??
-    undefined;
-  // The live payload only. A cached bookmark keeps one photograph — the one
-  // already in the frame above — so a pattern drawn from it has nothing extra
-  // to show and the strip stays away, which is the same answer as a pattern
-  // with a single photo.
-  const photos = useMemo(
-    () => (pattern === null ? [] : stripPhotos(pattern)),
-    [pattern],
-  );
+  /**
+   * The pages of the frame at the top of the screen.
+   *
+   * The live payload first, because it is the only thing here that has ever
+   * carried more than one picture. A cached bookmark keeps exactly one
+   * photograph, so offline the carousel is that one frame — no pager and no
+   * dots, which is the screen this had before the rest of the array was read.
+   * Nothing at all is a real answer too, and it draws the stripes.
+   */
+  const photos = useMemo(() => {
+    const found = pattern === null ? [] : heroPhotos(pattern);
+
+    if (found.length > 0) {
+      return found;
+    }
+
+    const only = cached?.photoUrl ?? null;
+
+    return only === null ? [] : [only];
+  }, [cached, pattern]);
+
+  /**
+   * A page is the window wide, and known before the first frame.
+   *
+   * The hero block has no horizontal padding and the screen's safe area only
+   * insets the top, so a page's width *is* the window's and there is nothing to
+   * measure. The counters pager strikes the same bargain for the same reason,
+   * and it is worth as much here: a pager sized from `onLayout` spends its
+   * first frame at whatever width its contents happen to want, and the first
+   * frame of this one is the photograph the knitter opened the screen for.
+   */
+  const { width } = useWindowDimensions();
+  const [page, setPage] = useState(0);
+
+  const settle = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const span = event.nativeEvent.layoutMeasurement.width;
+
+    if (span === 0) {
+      return;
+    }
+
+    setPage(Math.round(event.nativeEvent.contentOffset.x / span));
+  }, []);
+
+  const count = photos.length;
+  /**
+   * Clamped where it is drawn, and nowhere else.
+   *
+   * Unlike the counters pager, this list does not move under the knitter's
+   * thumb: it changes at most once, from the cached bookmark's single
+   * photograph to the payload's several, and it does that while the offset is
+   * still zero. So there is no scroll to haul back by hand — only the
+   * arithmetic to keep honest, so the dots can never all go dark and the label
+   * under them can never read "4 of 3".
+   */
+  const showing = count === 0 ? 0 : Math.min(page, count - 1);
   const free = pattern === null ? cached?.free === true : pattern.free === true;
 
   // Three answers, and this screen's own comes first: a bookmark row on the
@@ -1117,12 +1164,90 @@ export default function PatternScreen() {
           contentContainerStyle={{ paddingBottom: space.s10 + insets.bottom }}
         >
           <View style={[styles.photo, { borderBottomColor: colors.hairline }]}>
-            <PhotoFrame src={photo} label="pattern photo" aspect="4/5" />
+            {count > 1 ? (
+              <>
+                <ScrollView
+                  horizontal
+                  pagingEnabled
+                  // A page is the window, so a swipe cannot land between two of
+                  // them. The lock is for the other axis: this sits at the head
+                  // of a screen that scrolls the other way, and a thumb leaving
+                  // the photograph at an angle should move one of them, not
+                  // both.
+                  directionalLockEnabled
+                  showsHorizontalScrollIndicator={false}
+                  onMomentumScrollEnd={settle}
+                >
+                  {photos.map((url, index) => (
+                    // Keyed by position as well as by URL: Ravelry can in
+                    // principle send the same file twice, and two pages sharing
+                    // one key is a page that disappears.
+                    <View key={`${index}-${url}`} style={{ width }}>
+                      <PhotoFrame
+                        src={url}
+                        label={`pattern photo ${index + 1} of ${count}`}
+                        aspect="4/5"
+                      />
+                    </View>
+                  ))}
+                </ScrollView>
+
+                {/* Where the knitter is in the photographs.
+
+                    On paper under the frame rather than laid on it, which is
+                    the decision here worth writing down. Dots over photography
+                    go illegible the moment the shot is a pale one — and a flat
+                    lay on white linen is half of Ravelry — but the reason is
+                    the larger one: a page indicator is chrome about chrome. The
+                    photograph is what is being looked at, and a mark competing
+                    with it has misunderstood which of the two is the pattern.
+                    The counters pager reached the same answer and put its dots
+                    on paper too.
+
+                    Same 5px circles as `Badge`'s status dot, at the same
+                    hairline values, so the app's one round shape stays the one
+                    round shape. */}
+                <View
+                  style={styles.dots}
+                  accessible
+                  accessibilityLabel={`Photo ${showing + 1} of ${count}`}
+                >
+                  {photos.map((url, index) => (
+                    <View
+                      key={`${index}-${url}`}
+                      style={[
+                        styles.dot,
+                        {
+                          backgroundColor:
+                            index === showing
+                              ? colors.ink2
+                              : colors.hairlineStrong,
+                        },
+                      ]}
+                    />
+                  ))}
+                </View>
+              </>
+            ) : (
+              // One photograph is drawn the way it always was, and no
+              // photograph the same way: `photos[0]` is undefined on an empty
+              // list and the frame stripes itself, which is this screen's
+              // answer for a pattern with no picture. Neither gets a pager — a
+              // pager with one page is a gesture that does nothing, which is
+              // the counters bar's argument borrowed whole.
+              <PhotoFrame src={photos[0]} label="pattern photo" aspect="4/5" />
+            )}
+
             {/* The same mark the grid cards wear, at the same 14 in the same
                 26pt chip: ink rather than a colour, because a save is a flag
                 the knitter set and not one of the three states the palette is
                 reserved for. Feather draws it as an outline where the
-                character was filled. */}
+                character was filled.
+
+                Pinned to the block rather than carried inside the pager,
+                because it is a mark about the pattern and not about a
+                photograph. A ♥ that swiped away with the first frame would be
+                saying nothing about the second, and saying it loudly. */}
             {saved ? (
               <View style={[styles.saved, { backgroundColor: colors.surface }]}>
                 <Feather name="heart" size={14} color={colors.ink} />
@@ -1508,50 +1633,6 @@ export default function PatternScreen() {
             </View>
           ) : null}
 
-          {/* Where the project screen puts it, for the same reason: last of the
-              things to look at, ahead of the thing to read. A pattern's
-              photographs are the rest of the frame at the top of the screen —
-              the other angles, the other colourways, the flat lay of the
-              chart — and they belong after the facts and the controls, which
-              are what a knitter came down the screen for. */}
-          {photos.length > 1 ? (
-            <View
-              style={[
-                styles.section,
-                styles.ruled,
-                { borderTopColor: colors.hairline },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.sectionLabel,
-                  styles.inset,
-                  { color: colors.ink2 },
-                ]}
-              >
-                Photos
-              </Text>
-              {/* The first of these is already the frame at the top of the
-                  screen. It stays in the strip anyway: a gallery that silently
-                  drops its first picture reads as a missing one. */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.strip}
-              >
-                {photos.map((url) => (
-                  <PhotoFrame
-                    key={url}
-                    src={url}
-                    label="pattern photo"
-                    width={96}
-                    aspect="1/1"
-                  />
-                ))}
-              </ScrollView>
-            </View>
-          ) : null}
-
           {hasNotes(notesHtml, notesMarkdown) ? (
             <View
               style={[
@@ -1584,27 +1665,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  /**
+   * The dots' strip of paper, inside the hero block and above its hairline —
+   * the only padding this block has. Everything above it runs edge to edge,
+   * because every page in the pager is the window wide.
+   */
+  dots: {
+    flexDirection: "row",
+    alignSelf: "center",
+    // The dot's own width, so the run of them reads as a measure rather than as
+    // a dotted line. The counters pager's spacing exactly.
+    gap: 5,
+    paddingVertical: space.s2,
+  },
+  dot: {
+    // `Badge`'s status dot exactly, borrowed a second time. See the note where
+    // these are drawn.
+    width: 5,
+    height: 5,
+    borderRadius: radius.pill,
+  },
   block: {
     paddingHorizontal: space.s4,
     paddingVertical: space.s5,
     gap: space.s2,
-  },
-  /**
-   * A block whose contents draw their own edges. The photo strip scrolls, and
-   * a scroll view that stops 16pt short of the screen looks like it has run
-   * out rather than run on — so the padding moves off the block and onto the
-   * heading and the strip's own contents, and the last thumbnail can slide all
-   * the way to the edge. Same pair as the project screen's.
-   */
-  section: {
-    paddingVertical: space.s5,
-    gap: space.s2,
-  },
-  inset: { paddingHorizontal: space.s4 },
-  strip: {
-    flexDirection: "row",
-    gap: space.s2,
-    paddingHorizontal: space.s4,
   },
   ruled: { borderTopWidth: 1 },
   title: {
