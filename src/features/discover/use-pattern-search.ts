@@ -17,6 +17,13 @@
  *   The request decodes it back — a round trip through a string is cheaper than
  *   asking every caller to memoise.
  *
+ * The typed query travels beside that record and never inside it. The record is
+ * the screen's *chips* — the rail, the sheet, the count on "All filters" — and
+ * the words being typed are none of those: they are already visible in the box
+ * they were typed into, which is the whole job a chip exists to do. They are the
+ * same kind of thing only to the debounce, which is why they share the settling
+ * window and the page reset and nothing else.
+ *
  * There is deliberately no `loading` in state. The request the caller wants and
  * the request the state answers are both here, so "in flight" is the difference
  * between them — which keeps every `setState` inside a callback rather than an
@@ -38,12 +45,19 @@ const PAGE_SIZE = 20;
 
 const DEBOUNCE_MS = 300;
 
-type Request = { readonly page: number; readonly key: string };
+/**
+ * One page of one search. `key` is the filters and `query` is the words, and a
+ * page carries both forward so scrolling never drops half of what it is paging
+ * through — an empty `query` is the browse this screen has always done.
+ */
+type Request = { readonly page: number; readonly key: string; readonly query: string };
 
 type SearchState = {
   /** The request this state answers — by identity, success or failure. */
   readonly settled: Request | null;
   readonly key: string | null;
+  /** The words the loaded pages are an answer to; `null` until one lands. */
+  readonly query: string | null;
   readonly patterns: readonly RavelryPatternSummary[];
   readonly total: number | null;
   readonly lastPage: number | null;
@@ -57,6 +71,7 @@ type SearchState = {
 const IDLE: SearchState = {
   settled: null,
   key: null,
+  query: null,
   patterns: [],
   total: null,
   lastPage: null,
@@ -134,6 +149,7 @@ function merge(
   return {
     settled: request,
     key: request.key,
+    query: request.query,
     patterns,
     total: total ?? (request.page === 1 ? null : previous.total),
     lastPage,
@@ -144,22 +160,30 @@ function merge(
   };
 }
 
-export function usePatternSearch(filters: Record<string, string>, enabled: boolean): PatternSearch {
+export function usePatternSearch(
+  filters: Record<string, string>,
+  query: string,
+  enabled: boolean,
+): PatternSearch {
   const key = encodeFilters(filters);
+  // Trimmed here rather than at the field, so the box keeps whatever was typed
+  // into it and the wire never carries a search for a space.
+  const wanted = query.trim();
 
   const [request, setRequest] = useState<Request | null>(null);
   const [state, setState] = useState<SearchState>(IDLE);
 
-  // Filters settle, then become a request. The cleanup means a burst of chip
-  // taps only ever leaves the last one standing.
+  // Filters and words settle, then become a request. The cleanup means a burst
+  // of chip taps — or a word typed at speed — only ever leaves the last one
+  // standing, and either kind of change starts again at page 1.
   useEffect(() => {
     if (!enabled) {
       return;
     }
 
-    const timer = setTimeout(() => setRequest({ page: 1, key }), DEBOUNCE_MS);
+    const timer = setTimeout(() => setRequest({ page: 1, key, query: wanted }), DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [key, enabled]);
+  }, [key, wanted, enabled]);
 
   useEffect(() => {
     if (request === null) {
@@ -173,6 +197,12 @@ export function usePatternSearch(filters: Record<string, string>, enabled: boole
         const { patterns, paginator } = await patternsSearch({
           page: request.page,
           pageSize: PAGE_SIZE,
+          // Its own parameter rather than a key in the record below, because
+          // that is what it is: the record is the screen's chips, and these are
+          // the words. Undefined rather than '' when there is nothing to search
+          // for — an empty `query=` is a different request from no query at
+          // all, and this screen browses by default.
+          query: request.query === '' ? undefined : request.query,
           filters: decodeFilters(request.key),
           // On device this is a person's token, which is the only kind of
           // request Ravelry will attach personal attributes to.
@@ -207,17 +237,24 @@ export function usePatternSearch(filters: Record<string, string>, enabled: boole
   const answered = request !== null && state.settled === request;
   const loading = enabled && !answered;
 
-  const fresh = enabled && state.key === key;
+  // Both halves, because either one moving makes the loaded pages an answer to
+  // a question nobody is asking any more.
+  const fresh = enabled && state.key === key && state.query === wanted;
   const more =
     state.lastPage !== null
       ? state.page < state.lastPage
       : state.patterns.length > 0 && !state.drained;
 
+  // The next page of *the request in hand*, filters and words both. Reading
+  // them off `request` rather than off `key`/`wanted` is what keeps a page
+  // that is already in the air from being appended under a search that has
+  // since changed: a change replaces `request` from the effect above, at page
+  // 1, and `fresh` holds this shut until that page lands.
   const loadMore = () => {
     if (request === null || loading || state.signedOut || !fresh || !more) {
       return;
     }
-    setRequest({ page: state.page + 1, key: request.key });
+    setRequest({ page: state.page + 1, key: request.key, query: request.query });
   };
 
   return {

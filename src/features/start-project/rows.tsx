@@ -23,6 +23,7 @@ import type { NeedleListRow, RavelryYarnSummary, StashListRow } from '@/data';
 import { decimal } from '@/features/detail/raw';
 import type { SizeOption } from '@/features/start-project/needle-sizes';
 import { yarnMeta, yarnPhoto, yarnTitle } from '@/features/start-project/use-yarn-search';
+import { haptics } from '@/haptics';
 import { fonts, radius, space, tap, trackSmall, type, useTheme } from '@/theme';
 
 /** Ravelry's needle kinds arrive lowercase. Sentence case, never all-caps. */
@@ -54,7 +55,10 @@ export function YarnChoice({
       accessibilityRole="button"
       accessibilityState={{ selected }}
       accessibilityLabel={subtitle === '' ? title : `${title}, ${subtitle}`}
-      onPress={onPress}
+      onPress={() => {
+        haptics.tap();
+        onPress();
+      }}
       style={({ pressed }) => [
         styles.choice,
         {
@@ -119,7 +123,10 @@ export function NeedleChoice({
       // there is no size to write. It stays on the list, unselectable, rather
       // than pretending a tap did something.
       disabled={row.sizeMm === null}
-      onPress={onPress}
+      onPress={() => {
+        haptics.tap();
+        onPress();
+      }}
       style={({ pressed }) => [
         styles.choice,
         {
@@ -259,7 +266,10 @@ export function AddRow({
       accessibilityRole="button"
       accessibilityState={open === undefined ? undefined : { expanded: open }}
       accessibilityLabel={note === undefined ? label : `${label}, ${note}`}
-      onPress={onPress}
+      onPress={() => {
+        haptics.tap();
+        onPress();
+      }}
       style={({ pressed }) => [
         styles.addRow,
         {
@@ -300,7 +310,10 @@ export function YarnResult({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={meta === '' ? title : `${title}, ${meta}`}
-      onPress={onPress}
+      onPress={() => {
+        haptics.tap();
+        onPress();
+      }}
       style={({ pressed }) => [
         styles.choice,
         {
@@ -340,7 +353,10 @@ export function StagedYarn({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Remove ${title}`}
-      onPress={onClear}
+      onPress={() => {
+        haptics.tap();
+        onClear();
+      }}
       style={({ pressed }) => [
         styles.choice,
         {

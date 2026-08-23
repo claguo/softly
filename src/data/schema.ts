@@ -337,6 +337,57 @@ export const syncState = sqliteTable('sync_state', {
 });
 
 /**
+ * One row counter on a project: where the knitter is, and how far there is to go.
+ *
+ * Ravelry has no such thing. A project record holds a status, its packs, its
+ * needle sizes and the knitter's notes, and nowhere in any of it is "row 42 of
+ * 120" — the API was never asked to remember what a knitter is in the middle
+ * of. So a count tapped out on the sofa has nowhere to be but the phone it was
+ * tapped on, which makes this the second table after the local needles that is
+ * not a copy of anything Ravelry still has. `sync.ts` never writes it and never
+ * empties it.
+ *
+ * It hangs off Ravelry's project id rather than a foreign key into `projects`,
+ * for exactly the reason `project_details` does: `pullProjects` empties that
+ * table and refills it from the list endpoint on every sync, so a counter tied
+ * to a local row would survive until the next pull-to-refresh and then quietly
+ * vanish mid-sleeve. A Ravelry project id does not change and outlives every
+ * emptying of the table it names, which is the whole of why this key is the
+ * right one.
+ *
+ * Everything but the count is optional, because a knitter reaching for a
+ * counter mid-row is not filling in a form: an unnamed counter with no stitch
+ * and no total is still the answer to "which row am I on".
+ */
+export const rowCounters = sqliteTable(
+  'row_counters',
+  {
+    // Left off on insert and filled by SQLite: an integer primary key is an
+    // alias for the rowid, so the database hands out the number. There is no
+    // negative-id trick here like the one on `needles` — that exists because
+    // Ravelry hands out positive needle ids this app cannot predict, and here
+    // there is nobody to collide with. `row-counters.ts` is the only writer
+    // this table will ever have.
+    id: integer('id').primaryKey(),
+    projectId: integer('project_id').notNull(),
+    /** What the knitter called it — "Body", "Left sleeve". Null reads as "Rows". */
+    name: text('name'),
+    /** "stockinette", "2x2 rib": a label off a pattern, not a taxonomy of ours. */
+    stitchType: text('stitch_type'),
+    /** What the pattern says the total is. Null is a count with no end in sight. */
+    maxRows: integer('max_rows'),
+    // Defaulted, because a counter starts where every counter starts, and a
+    // write that forgot to say so should land on nought rather than on null.
+    count: integer('count').notNull().default(0),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  // Every read of this table is "the counters on one project", which is the
+  // only shape a counter is ever wanted in.
+  (table) => [index('row_counters_project_id_idx').on(table.projectId)],
+);
+
+/**
  * Every table, in the order `db.ts` creates them.
  *
  * Appending one is the whole migration: `create table if not exists` runs over
@@ -355,6 +406,7 @@ export const tables = [
   yarnPhotos,
   yarnColors,
   syncState,
+  rowCounters,
 ] as const;
 
 export type FavoriteRow = typeof favorites.$inferSelect;
@@ -366,6 +418,7 @@ export type PatternPdfRow = typeof patternPdfs.$inferSelect;
 export type YarnPhotoRow = typeof yarnPhotos.$inferSelect;
 export type YarnColorRow = typeof yarnColors.$inferSelect;
 export type PatternPhotoRow = typeof patternPhotos.$inferSelect;
+export type RowCounterRow = typeof rowCounters.$inferSelect;
 export type SyncStateRow = typeof syncState.$inferSelect;
 
 export type FavoriteInsert = typeof favorites.$inferInsert;
@@ -373,3 +426,4 @@ export type StashInsert = typeof stash.$inferInsert;
 export type NeedleInsert = typeof needles.$inferInsert;
 export type ProjectInsert = typeof projects.$inferInsert;
 export type PatternPdfInsert = typeof patternPdfs.$inferInsert;
+export type RowCounterInsert = typeof rowCounters.$inferInsert;

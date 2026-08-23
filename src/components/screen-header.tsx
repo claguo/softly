@@ -1,5 +1,7 @@
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { haptics } from '@/haptics';
 import { fonts, space, tap, trackSmall, type, useTheme } from '@/theme';
 
 export type ScreenHeaderProps = {
@@ -10,17 +12,30 @@ export type ScreenHeaderProps = {
   /** The one text action for the screen, right-aligned and set in the link colour. */
   action?: string;
   onAction?: () => void;
+  /**
+   * The same one action slot, handed over whole — for a screen whose action has
+   * to be a native view and so cannot be described by a string.
+   *
+   * Mutually exclusive with `action`: pass one or the other, never both. If
+   * both turn up this one is drawn, because a caller who built a view meant it,
+   * but that is a bug being tolerated rather than a second action being
+   * allowed. Whatever comes in gets the same 48pt box the words get.
+   */
+  right?: ReactNode;
 };
 
 /**
  * The one place per screen where the brand voice speaks: a serif title, a
- * stamped count, one text action, a hairline underneath. There is deliberately
- * no sub-line — the design contract does not have the prop.
+ * stamped count, one action, a hairline underneath. There is deliberately no
+ * sub-line — the design contract does not have the prop.
  *
- * The action is words and nothing else, so it is coloured as a link rather than
- * drawn as a filled control; the filled one belongs to the content below.
+ * Still exactly one action; no longer always words, and no longer always this
+ * component's to draw. Given `action` it is words and nothing else, coloured as
+ * a link rather than drawn as a filled control — the filled one belongs to the
+ * content below. Given `right` the slot is the caller's, which is what a system
+ * menu needs: iOS will only hang one off a native view, not off a Pressable.
  */
-export function ScreenHeader({ title, count, action, onAction }: ScreenHeaderProps) {
+export function ScreenHeader({ title, count, action, onAction, right }: ScreenHeaderProps) {
   const { colors } = useTheme();
 
   return (
@@ -38,11 +53,21 @@ export function ScreenHeader({ title, count, action, onAction }: ScreenHeaderPro
         ) : null}
       </View>
 
-      {action ? (
+      {right ? (
+        // The caller's view, in the box the words would have had, so the header
+        // comes out the same height either way and the slot sits where the eye
+        // already looks for it. Nothing else is done to it: what it is and how
+        // it is pressed are the caller's, and this one has a whole native menu
+        // behind it.
+        <View style={styles.action}>{right}</View>
+      ) : action ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={action}
-          onPress={onAction}
+          onPress={() => {
+            haptics.tap();
+            onAction?.();
+          }}
           style={styles.action}>
           {({ pressed }) => (
             <Text

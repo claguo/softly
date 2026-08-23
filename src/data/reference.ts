@@ -31,6 +31,30 @@ export const PROJECT_STATUS_FINISHED = 2;
 export const PROJECT_STATUS_HIBERNATING = 3;
 export const PROJECT_STATUS_FROGGED = 4;
 
+export type ProjectStatusName = {
+  readonly id: number;
+  /** Sentence case, as a knitter would say it rather than as a database row. */
+  readonly label: string;
+};
+
+/**
+ * The four a project can be in, for the menu behind the badge on its screen.
+ *
+ * Ravelry's own four fixed rows, ids 1 to 4 in that order, and the same list
+ * `POST /projects/project_statuses.json` would answer with — which is why the
+ * ids above are written down rather than fetched, and why this is a list rather
+ * than a lookup. Ordered as a project moves through them: on the needles, off
+ * them, put away, pulled out again. The words are Ravelry's, because they are
+ * the words `status_name` will say back on the very next sync, and a menu whose
+ * rows do not match the badge above them is a menu that reads as a bug.
+ */
+export const PROJECT_STATUSES: readonly ProjectStatusName[] = [
+  { id: PROJECT_STATUS_IN_PROGRESS, label: 'In progress' },
+  { id: PROJECT_STATUS_FINISHED, label: 'Finished' },
+  { id: PROJECT_STATUS_HIBERNATING, label: 'Hibernating' },
+  { id: PROJECT_STATUS_FROGGED, label: 'Frogged' },
+];
+
 /** Stash statuses: 1 in stash, 2 used up, 3 to trade, 4 gone, 5 in progress. */
 export const STASH_STATUS_IN_STASH = 1;
 

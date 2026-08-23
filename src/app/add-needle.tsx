@@ -60,6 +60,7 @@ import { firstString, readParam } from "@/features/detail/raw";
 import { sizeOptions, type SizeOption } from "@/features/start-project/needle-sizes";
 import { setPendingNeedleSelection } from "@/features/start-project/pending-selection";
 import { SizeGrid } from "@/features/start-project/rows";
+import { haptics } from "@/haptics";
 import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 /** "Double Pointed" and "double_pointed" both become `double-pointed`. */
@@ -223,9 +224,11 @@ export default function AddNeedleScreen() {
         setPendingNeedleSelection(chosen.key);
       }
 
+      haptics.success();
       router.back();
     } catch {
       setFailed(true);
+      haptics.error();
     } finally {
       setSaving(false);
     }

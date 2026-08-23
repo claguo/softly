@@ -35,6 +35,13 @@ export type ProjectYarnRowProps = {
   photo?: string;
   /** The skein's own colour, over the photograph or instead of one. */
   tint?: string;
+  /**
+   * The bottom hairline. It is a separator, and the caller is the one that
+   * knows when there is nothing to separate — a section counts its packs and
+   * passes false on the last, so it ends clean instead of doubling with the
+   * next section's own rule.
+   */
+  ruled?: boolean;
 };
 
 /** One pack: the yarn a project ate, and how much of it. */
@@ -47,6 +54,7 @@ export function ProjectYarnRow({
   note,
   photo,
   tint,
+  ruled = true,
 }: ProjectYarnRowProps) {
   const { colors } = useTheme();
 
@@ -56,7 +64,13 @@ export function ProjectYarnRow({
     // stashed and used up years ago — and a row that sometimes opens something
     // is worse than one that never does.
     <View
-      style={[styles.row, { borderBottomColor: colors.hairline }]}
+      style={[
+        styles.row,
+        {
+          borderBottomWidth: ruled ? 1 : 0,
+          borderBottomColor: colors.hairline,
+        },
+      ]}
       accessible
       accessibilityLabel={brand ? `${title}, ${brand}` : title}
     >
@@ -96,7 +110,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: space.s4,
     padding: space.s3,
-    borderBottomWidth: 1,
   },
   body: {
     flex: 1,

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { PhotoFrame } from "@/components/ui/photo-frame";
 import { Stamp } from "@/components/ui/stamp";
 import { formatRelative } from "@/components/ui/sync-notice";
+import { haptics } from "@/haptics";
 import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 export type ProjectCardProps = {
@@ -57,6 +58,13 @@ export function ProjectCard({
 }: ProjectCardProps) {
   const { colors } = useTheme();
 
+  const press = onPress
+    ? () => {
+        haptics.tap();
+        onPress();
+      }
+    : undefined;
+
   const source =
     pattern && designer ? `${pattern} · ${designer}` : (pattern ?? designer);
   const touched = touchedAt === undefined ? null : formatRelative(touchedAt);
@@ -71,7 +79,7 @@ export function ProjectCard({
     <Pressable
       accessibilityRole={onPress ? "button" : undefined}
       accessibilityLabel={source ? `${name}, ${source}` : name}
-      onPress={onPress}
+      onPress={press}
       style={({ pressed }) => [
         styles.card,
         { borderColor: colors.hairline },

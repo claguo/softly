@@ -1,5 +1,5 @@
 /**
- * Stash — yarn and hardware, in one scroll.
+ * Stash — yarn, hardware and the account, in one scroll.
  *
  * Two sections in a single list rather than two lists: the needles are a flush
  * run of rows sharing hairlines, and only one scroll container can keep them
@@ -9,17 +9,41 @@
  * Cast on opens — this is the other door to them, and the one a knitter who is
  * not starting a project would look for. Neither is asked to hand anything
  * back here; see `pending-selection` for what that means and why it matters.
+ *
+ * There is no You tab any more, so this screen is also where the Ravelry
+ * account lives. Signed out it is the whole screen: nothing here exists without
+ * a session, so the sign-in stands in the empty list rather than beside it.
+ * Signed in it shrinks to the username in the header's one action slot, with
+ * Sign out behind it — a door that is only ever opened on purpose.
+ *
+ * That door is the system's on iOS: a SwiftUI `Menu` hung off the name, which
+ * puts a destructive row in the platform's own pull-down instead of a card this
+ * app drew to look like one. `@expo/ui` is iOS and nothing else, so the drawn
+ * popover stays below for everywhere that is not.
  */
 
-import { router } from "expo-router";
-import { memo, useCallback, useEffect, useMemo } from "react";
+import { Button, Host, Menu, Text as SwiftUIText } from "@expo/ui/swift-ui";
 import {
+  contentShape,
+  font,
+  foregroundStyle,
+  frame,
+  kerning,
+  shapes,
+} from "@expo/ui/swift-ui/modifiers";
+import { router } from "expo-router";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Modal,
+  Platform,
   Pressable,
   RefreshControl,
   SectionList,
   StyleSheet,
   Text,
   View,
+  type LayoutChangeEvent,
 } from "react-native";
 import {
   SafeAreaView,
@@ -29,17 +53,33 @@ import {
 import { useAuth } from "@/auth/context";
 import { ScreenHeader } from "@/components/screen-header";
 import { NeedleRow } from "@/components/ui/needle-row";
+import { SwipeRow } from "@/components/ui/swipe-row";
 import { YarnCard } from "@/components/ui/yarn-card";
 import {
+  deleteLocalNeedle,
+  deleteStashEntry,
   fillStashPhotos,
+  forgetYarnColor,
+  refreshStash,
   tintFor,
   useNeedles,
   useStash,
   type NeedleListRow,
   type StashListRow,
 } from "@/data";
+import { triage, type Problem } from "@/features/start-project/problem";
 import { usePullToSync } from "@/features/sync/pull-to-sync";
-import { fonts, space, tabBarInset, trackSmall, type, useTheme } from "@/theme";
+import { haptics } from "@/haptics";
+import {
+  fonts,
+  radius,
+  space,
+  tabBarInset,
+  tap,
+  trackSmall,
+  type,
+  useTheme,
+} from "@/theme";
 
 /**
  * One list, three row shapes: tagged so the renderer never has to guess.
@@ -63,13 +103,32 @@ type StashSection = {
   data: StashItem[];
 };
 
+/** The three ways taking a skein out of the stash can fail, in this screen's
+ * words. The needles have none: that drawer is the app's own and nothing about
+ * it ever leaves the device. */
+const DELETE_NOTICES: Record<Problem, string> = {
+  failed: "Couldn't delete the yarn.",
+  // Aqua, not mustard: nothing went wrong, the request simply never left.
+  offline: "You're offline · try again later.",
+  signedOut: "Sign in to delete yarn.",
+};
+
 /** Ravelry's needle kinds arrive lowercase ("circular", "hook"). Sentence case,
  * never all-caps — this only lifts the first letter. */
 function sentence(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-const YarnItem = memo(function YarnItem({ row }: { row: StashListRow }) {
+const YarnItem = memo(function YarnItem({
+  row,
+  busy,
+  onDelete,
+}: {
+  row: StashListRow;
+  /** This skein's own delete is in flight; see `SwipeRow`. */
+  busy: boolean;
+  onDelete: (id: number) => void;
+}) {
   const title = row.colorway ?? row.yarnName ?? "Unnamed yarn";
   // The second line carries whatever else names this yarn: the maker, plus the
   // yarn's own name when the colorway has already taken the title.
@@ -79,8 +138,20 @@ const YarnItem = memo(function YarnItem({ row }: { row: StashListRow }) {
 
   // The yarn cards are bordered on all four sides, so they are inset and
   // spaced; only the needle rows below run flush and share their hairlines.
+  // That inset is the swipeable's container now, so a row that slides aside
+  // slides inside the same box it always occupied.
   return (
-    <View style={styles.yarnItem}>
+    <SwipeRow
+      containerStyle={styles.yarnItem}
+      label="Delete"
+      // Asked twice, like the edit sheet asks: this takes the skein off
+      // Ravelry, and there is no way back to it.
+      confirmLabel="Tap again"
+      accessibilityLabel="Delete this yarn"
+      confirmAccessibilityLabel="Tap again to delete this yarn from Ravelry"
+      busy={busy}
+      onCommit={() => onDelete(row.id)}
+    >
       <YarnCard
         colorway={title}
         brand={subtitle === "" ? undefined : subtitle}
@@ -98,21 +169,45 @@ const YarnItem = memo(function YarnItem({ row }: { row: StashListRow }) {
           router.push({ pathname: "/yarn/[id]", params: { id: row.id } })
         }
       />
-    </View>
+    </SwipeRow>
   );
 });
 
-const NeedleItem = memo(function NeedleItem({ row }: { row: NeedleListRow }) {
+const NeedleItem = memo(function NeedleItem({
+  row,
+  onDelete,
+}: {
+  row: NeedleListRow;
+  onDelete: (id: number) => void;
+}) {
+  // Only the needles this app wrote can be taken away. Ravelry's inventory is
+  // read-only — there is no route that deletes one — and `pullNeedles` replaces
+  // the table from the account on every sync, so a Ravelry row swiped away here
+  // would be back within the minute. Rather than offer a button that lies, the
+  // gesture simply is not there on those rows. See `deleteLocalNeedle`.
+  const own = row.source === "local";
+
   return (
-    <NeedleRow
-      size={row.sizeMm === null ? "—" : String(row.sizeMm)}
-      us={row.sizeUs ?? undefined}
-      kind={sentence(row.kind ?? row.name ?? "Needle")}
-      length={row.lengthLabel ?? undefined}
-      onPress={() =>
-        router.push({ pathname: "/needle/[id]", params: { id: row.id } })
-      }
-    />
+    <SwipeRow
+      enabled={own}
+      label="Delete"
+      // One tap, no arming, and no busy window either: this is a row in the
+      // app's own drawer, the write is a synchronous line of SQLite, and
+      // `edit-row-counter` already sets the precedent that the app's own
+      // records go without a second asking.
+      accessibilityLabel="Delete this needle"
+      onCommit={() => onDelete(row.id)}
+    >
+      <NeedleRow
+        size={row.sizeMm === null ? "—" : String(row.sizeMm)}
+        us={row.sizeUs ?? undefined}
+        kind={sentence(row.kind ?? row.name ?? "Needle")}
+        length={row.lengthLabel ?? undefined}
+        onPress={() =>
+          router.push({ pathname: "/needle/[id]", params: { id: row.id } })
+        }
+      />
+    </SwipeRow>
   );
 });
 
@@ -122,17 +217,6 @@ const EmptyLine = memo(function EmptyLine({ line }: { line: string }) {
 
   return <Text style={[styles.emptyLine, { color: colors.ink2 }]}>{line}</Text>;
 });
-
-const renderStashItem = ({ item }: { item: StashItem }) => {
-  switch (item.kind) {
-    case "yarn":
-      return <YarnItem row={item.yarn} />;
-    case "needle":
-      return <NeedleItem row={item.needle} />;
-    case "empty":
-      return <EmptyLine line={item.line} />;
-  }
-};
 
 const keyForStashItem = (item: StashItem) => {
   switch (item.kind) {
@@ -148,12 +232,70 @@ const keyForStashItem = (item: StashItem) => {
 export default function StashScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { status, user } = useAuth();
+  const { status, user, signIn, signOut } = useAuth();
   const { data: yarn } = useStash();
   const { data: needles } = useNeedles();
 
   const signedIn = status === "signedIn";
   const username = user?.username ?? null;
+
+  // Which account door this build has. Everything below that is only one of the
+  // two is written against this rather than against `Platform.OS` again, so the
+  // two halves cannot drift apart.
+  const nativeAccount = Platform.OS === "ios";
+
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  // The drawn popover hangs off the bottom of the header, and a Modal is its
+  // own window with no idea where that is — so the header says how tall it came
+  // out rather than the number being written down here and going stale. Nothing
+  // on iOS reads it: the system's menu knows where it was opened from.
+  const [headerHeight, setHeaderHeight] = useState(0);
+
+  const measureHeader = useCallback((event: LayoutChangeEvent) => {
+    setHeaderHeight(event.nativeEvent.layout.height);
+  }, []);
+
+  const handleSignIn = useCallback(async () => {
+    // The screen's one filled button, drawn here rather than imported.
+    haptics.commit();
+    // Every attempt starts clean: the last failure line clears on retry.
+    setFailed(false);
+    setBusy(true);
+    try {
+      await signIn();
+      haptics.success();
+    } catch {
+      // Cancelled browser, state mismatch, no network — all the same to the
+      // reader: it didn't complete. No red, no dialog, no stack.
+      setFailed(true);
+      haptics.error();
+    } finally {
+      setBusy(false);
+    }
+  }, [signIn]);
+
+  /**
+   * Signing out, and nothing around it: the session goes, and the sign-in that
+   * takes the screen back gets to start clean rather than wearing the last
+   * failure line from before this account existed.
+   *
+   * The two doors owe the knitter different things on the way in, which is why
+   * this is the shared middle and not the whole of either. The drawn popover
+   * has to answer the tap itself and then take itself down; iOS has already
+   * done both — the tick of the menu and the menu closing — before this runs.
+   */
+  const signOutNow = useCallback(() => {
+    setFailed(false);
+    void signOut();
+  }, [signOut]);
+
+  const handleSignOut = useCallback(() => {
+    haptics.tap();
+    setAccountOpen(false);
+    signOutNow();
+  }, [signOutNow]);
 
   // Neither sheet is asked to hand anything back: this screen is not in the
   // middle of choosing, the way Cast on is when it opens the same two. The
@@ -163,7 +305,7 @@ export default function StashScreen() {
   const addNeedle = useCallback(() => router.push("/add-needle"), []);
 
   // Both sections, always, signed in — see the note on `StashItem`. Signed out
-  // there are none at all, and the invitation below takes the whole screen.
+  // there are none at all, and the sign-in below takes the whole screen.
   const sections = useMemo<StashSection[]>(() => {
     if (!signedIn) {
       return [];
@@ -205,6 +347,87 @@ export default function StashScreen() {
   // A gesture on this screen, not the global sync status: see `usePullToSync`.
   const { refreshing, onRefresh } = usePullToSync(username);
 
+  // Which skein is on its way out, and what went wrong the last time one was.
+  // Nothing here is optimistic: the mirror only loses the row once the refresh
+  // behind the delete has come back, so until then it sits there dimmed and
+  // untouchable. See `SwipeRow`.
+  const [deletingYarn, setDeletingYarn] = useState<number | null>(null);
+  const [deleteProblem, setDeleteProblem] = useState<Problem | null>(null);
+
+  const removeYarn = useCallback(
+    (id: number) => {
+      if (username === null) {
+        // Nothing is attempted: a write with no account behind it fails at the
+        // client, and saying so here costs no round trip.
+        setDeleteProblem("signedOut");
+        haptics.error();
+        return;
+      }
+
+      setDeleteProblem(null);
+      setDeletingYarn(id);
+
+      void (async () => {
+        try {
+          await deleteStashEntry(username, id);
+
+          // Only once Ravelry has agreed. The shade was matched by eye on this
+          // device and lives nowhere else, so it has to be forgotten by hand —
+          // a local row about a skein that no longer exists is a colour nobody
+          // will ever see again attached to an id that will be reissued. The
+          // same cleanup the edit sheet does, because it is the same deletion.
+          forgetYarnColor(id);
+          await refreshStash(username);
+
+          haptics.warning();
+        } catch (error) {
+          setDeleteProblem(triage(error));
+          haptics.error();
+        } finally {
+          setDeletingYarn(null);
+        }
+      })();
+    },
+    [username],
+  );
+
+  /**
+   * A needle out of the app's own drawer, and nothing around it.
+   *
+   * No account is involved, no request leaves, and `deleteLocalNeedle` is a
+   * synchronous line of SQLite that refuses anything Ravelry owns — so there is
+   * no busy window to draw and no failure worth a sentence. The row is gone
+   * before the finger is off it: `queries.ts` is listening to the database's
+   * own update hook, so `useNeedles` redraws itself.
+   */
+  const removeNeedle = useCallback((id: number) => {
+    if (deleteLocalNeedle(id)) {
+      haptics.warning();
+    } else {
+      haptics.error();
+    }
+  }, []);
+
+  const renderStashItem = useCallback(
+    ({ item }: { item: StashItem }) => {
+      switch (item.kind) {
+        case "yarn":
+          return (
+            <YarnItem
+              row={item.yarn}
+              busy={deletingYarn === item.yarn.id}
+              onDelete={removeYarn}
+            />
+          );
+        case "needle":
+          return <NeedleItem row={item.needle} onDelete={removeNeedle} />;
+        case "empty":
+          return <EmptyLine line={item.line} />;
+      }
+    },
+    [deletingYarn, removeNeedle, removeYarn],
+  );
+
   const renderSectionHeader = useCallback(
     ({ section }: { section: StashSection }) => (
       <View style={styles.sectionHeader}>
@@ -217,7 +440,10 @@ export default function StashScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={section.addLabel}
-          onPress={section.onAdd}
+          onPress={() => {
+            haptics.tap();
+            section.onAdd();
+          }}
           hitSlop={{ top: space.s2, bottom: space.s2, right: space.s4 }}
           style={styles.sectionAction}
         >
@@ -242,17 +468,106 @@ export default function StashScreen() {
       edges={["top"]}
       style={[styles.screen, { backgroundColor: colors.paper }]}
     >
-      <ScreenHeader title="Stash" />
+      {/* Measured, not assumed: the popover below hangs off this edge. Not
+          measured at all where there is no popover to hang — asking on iOS
+          would be a re-render a frame after every layout, for a number nothing
+          left on the screen reads. */}
+      <View onLayout={nativeAccount ? undefined : measureHeader}>
+        <ScreenHeader
+          title="Stash"
+          // The knitter's own name is the action either way, because the only
+          // thing behind it is their account. Signed in but offline before the
+          // profile loaded: the session is real, the name isn't loaded yet.
+          action={
+            signedIn && !nativeAccount ? (username ?? "Your account") : undefined
+          }
+          onAction={() => setAccountOpen(true)}
+          right={
+            signedIn && nativeAccount ? (
+              // No `colorScheme` on the Host on purpose: this app's theme reads
+              // `useColorScheme()` and pins nothing, so SwiftUI is already
+              // looking at the same switch. Passing one could only repeat the
+              // system, or contradict it a frame late.
+              <Host matchContents>
+                <Menu
+                  // No `onPrimaryAction`. With it the name would want a
+                  // long-press to give up the menu, and a name with nothing
+                  // behind a tap is a control that does nothing.
+                  label={
+                    <SwiftUIText
+                      modifiers={[
+                        // The header action's own face, said in SwiftUI's
+                        // terms: the family by the name `useFonts` registered
+                        // it under, then the small size and the small tracking
+                        // that make it a stamp rather than a sentence.
+                        font({
+                          family: fonts.ui,
+                          size: type.small.fontSize,
+                        }),
+                        kerning(trackSmall),
+                        foregroundStyle(colors.link),
+                        // The honest 48pt box, built the other way round: there
+                        // is no Pressable in this branch to hang slop off, so
+                        // the frame is taller than the words and the shape says
+                        // the empty part of it is still the button. The header
+                        // hands the height straight back with its own negative
+                        // margin, exactly as it does for the words.
+                        frame({ minHeight: tap.min, alignment: "trailing" }),
+                        contentShape(shapes.rectangle()),
+                      ]}
+                    >
+                      {username ?? "Your account"}
+                    </SwiftUIText>
+                  }
+                >
+                  {/* One row, and iOS draws it in red off `role` — the same
+                      thing the popover below says in words and position. */}
+                  <Button
+                    label="Sign out"
+                    role="destructive"
+                    systemImage="rectangle.portrait.and.arrow.right"
+                    onPress={signOutNow}
+                  />
+                </Menu>
+              </Host>
+            ) : undefined
+          }
+        />
+      </View>
+
+      {/* The one thing a swiped-away row cannot say for itself, said once and
+          quietly under the heading. It clears on the next attempt. Mustard for
+          a delete that was refused, aqua for one that never left the device —
+          the same two the sheets use, for the same reason. */}
+      {deleteProblem !== null ? (
+        <Text
+          style={[
+            styles.deleteNotice,
+            { color: deleteProblem === "failed" ? colors.mustard : colors.aqua },
+          ]}
+        >
+          {DELETE_NOTICES[deleteProblem]}
+        </Text>
+      ) : null}
 
       <SectionList
         sections={sections}
         renderItem={renderStashItem}
         renderSectionHeader={renderSectionHeader}
         keyExtractor={keyForStashItem}
+        // The rows are memoised, so the list has to be told that which one is
+        // busy has changed; the rows themselves still bail out unless it is
+        // theirs. See `YarnItem`.
+        extraData={deletingYarn}
         // The needle rows are a flush run; a sticky label riding over them
         // would put a second horizontal rule where the design has one.
         stickySectionHeadersEnabled={false}
-        contentContainerStyle={{ paddingBottom: tabBarInset + insets.bottom }}
+        contentContainerStyle={[
+          { paddingBottom: tabBarInset + insets.bottom },
+          // With nothing to scroll the container is the empty state's frame,
+          // and it has to be as tall as the screen before it can centre in it.
+          sections.length === 0 && styles.fill,
+        ]}
         refreshControl={
           username === null ? undefined : (
             <RefreshControl
@@ -266,12 +581,101 @@ export default function StashScreen() {
         // two sections, and each says for itself when it has nothing under it.
         ListEmptyComponent={
           signedIn ? null : (
-            <Text style={[styles.invitation, { color: colors.ink2 }]}>
-              Sign in on the You tab to see your yarn and needles.
-            </Text>
+            <View style={styles.signIn}>
+              {status === "loading" ? (
+                <ActivityIndicator color={colors.ink2} />
+              ) : (
+                <View style={styles.signInBlock}>
+                  <Text style={[styles.lede, { color: colors.ink2 }]}>
+                    Your Ravelry account powers everything here.
+                  </Text>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Sign in with Ravelry"
+                    accessibilityState={{ busy, disabled: busy }}
+                    disabled={busy}
+                    onPress={handleSignIn}
+                    style={({ pressed }) => [
+                      styles.button,
+                      {
+                        backgroundColor: pressed
+                          ? colors.actionPressed
+                          : colors.action,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[styles.buttonLabel, { color: colors.onAction }]}
+                    >
+                      Sign in with Ravelry
+                    </Text>
+                  </Pressable>
+
+                  {failed ? (
+                    <Text style={[styles.stamp, { color: colors.mustard }]}>
+                      Sign-in didn&apos;t complete.
+                    </Text>
+                  ) : null}
+
+                  <Text style={[styles.stamp, { color: colors.ink2 }]}>
+                    Softly is an independent app, not made by Ravelry.
+                  </Text>
+                </View>
+              )}
+            </View>
           )
         }
       />
+
+      {/* The same one row behind the name, drawn by hand for everywhere that
+          is not iOS, and the whole rest of the screen dismisses it: signing out
+          is not a thing to land on by accident, and it is not a thing to have
+          to hunt for either. Where the system has a pull-down of its own this
+          never mounts at all — a Modal that can never be asked to open is still
+          a window being kept ready. */}
+      {nativeAccount ? null : (
+        <Modal
+          visible={accountOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setAccountOpen(false)}
+        >
+          <View style={styles.overlay}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss"
+              style={StyleSheet.absoluteFill}
+              onPress={() => setAccountOpen(false)}
+            />
+
+            <View
+              style={[
+                styles.popover,
+                {
+                  top: insets.top + headerHeight + space.s1,
+                  backgroundColor: colors.surface,
+                  borderColor: colors.hairline,
+                },
+              ]}
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Sign out"
+                onPress={handleSignOut}
+                style={({ pressed }) => [
+                  styles.popoverRow,
+                  pressed ? { backgroundColor: colors.surfaceSunk } : null,
+                ]}
+              >
+                <Text style={[styles.popoverLabel, { color: colors.ink }]}>
+                  Sign out
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -320,12 +724,83 @@ const styles = StyleSheet.create({
     paddingBottom: space.s2,
     paddingHorizontal: space.s4,
   },
-  invitation: {
+  deleteNotice: {
+    // The stamped label again, ranged left under the header: this one is about
+    // a row that would not go, not about the screen.
+    fontFamily: fonts.ui,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
+    paddingHorizontal: space.s4,
+    paddingBottom: space.s2,
+  },
+  fill: { flexGrow: 1 },
+  signIn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: space.s4,
+    paddingVertical: space.s10,
+  },
+  signInBlock: {
+    // Full width, then capped: a line of body text stops being readable
+    // somewhere before the width of a tablet. Width rather than `alignSelf:
+    // stretch` so the cap leaves the block centred instead of against the left.
+    width: "100%",
+    maxWidth: 420,
+    alignItems: "center",
+    gap: space.s5,
+  },
+  lede: {
     fontFamily: fonts.ui,
     fontSize: type.body.fontSize,
     lineHeight: type.body.lineHeight,
     textAlign: "center",
-    paddingTop: space.s10,
+  },
+  button: {
+    alignSelf: "stretch",
+    height: tap.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: space.s6,
+    borderRadius: radius.md,
+  },
+  buttonLabel: {
+    fontFamily: fonts.uiSemiBold,
+    fontSize: type.heading.fontSize,
+    lineHeight: type.heading.lineHeight,
+  },
+  stamp: {
+    // Stamped label: small size, small tracking, sentence case.
+    fontFamily: fonts.ui,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
+    textAlign: "center",
+  },
+  overlay: { flex: 1 },
+  popover: {
+    position: "absolute",
+    right: space.s4,
+    minWidth: 160,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    // The tab pill's shadow, and for the same reason: this is the second thing
+    // in the app that floats over the paper rather than sitting in it.
+    shadowColor: "#221E1A",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  popoverRow: {
+    minHeight: tap.min,
+    justifyContent: "center",
     paddingHorizontal: space.s4,
+  },
+  popoverLabel: {
+    fontFamily: fonts.ui,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
   },
 });

@@ -17,6 +17,15 @@ export type TextFieldProps = {
   returnKeyType?: 'done' | 'next';
   onSubmitEditing?: () => void;
   /**
+   * `'number-pad'` for a box that only ever holds a whole number — a row
+   * count, a total. It is the keyboard and not a validator: the digits are
+   * easier to hit and a paste is still whatever was pasted, so whoever reads
+   * the value still has to make sense of it. iOS draws that pad without a
+   * return key, so a field set this way cannot rely on `returnKeyType` to get
+   * the keyboard back down; the sheets dismiss it by being scrolled.
+   */
+  keyboardType?: 'default' | 'number-pad';
+  /**
    * `'display'` for the one field on a screen that is also that screen's
    * headline — the rest stay `'body'`, which is every field the app had before
    * this existed.
@@ -62,6 +71,7 @@ export function TextField({
   editable = true,
   returnKeyType,
   onSubmitEditing,
+  keyboardType = 'default',
   size = 'body',
 }: TextFieldProps) {
   const { colors } = useTheme();
@@ -76,6 +86,7 @@ export function TextField({
       editable={editable}
       returnKeyType={returnKeyType}
       onSubmitEditing={onSubmitEditing}
+      keyboardType={keyboardType}
       multiline
       submitBehavior="blurAndSubmit"
       onFocus={() => setFocused(true)}

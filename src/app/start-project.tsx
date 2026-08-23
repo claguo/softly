@@ -83,13 +83,14 @@ import {
   SizeGrid,
   YarnChoice,
 } from "@/features/start-project/rows";
+import { haptics } from "@/haptics";
 import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 const NOTICES: Record<Problem, string> = {
   failed: "Couldn't start the project.",
   // Aqua, not mustard: nothing went wrong, the request simply never left.
   offline: "You're offline · try again later.",
-  signedOut: "Sign in on the You tab to start a project.",
+  signedOut: "Sign in on the Stash tab to start a project.",
 };
 
 /**
@@ -297,6 +298,7 @@ export default function StartProjectScreen() {
 
     if (username === null) {
       setProblem("signedOut");
+      haptics.error();
       return;
     }
 
@@ -342,6 +344,11 @@ export default function StartProjectScreen() {
         // to be on the device before this screen gets out of the way.
         await refreshProjects(username);
 
+        // Before the fork, because both sides of it are a project that exists:
+        // one lands on it, the other on Home, and the cast-on was real either
+        // way.
+        haptics.success();
+
         if (newId !== null && getProjectById(newId) !== null) {
           // Not in the history, so this replaces the modal rather than
           // popping to it: the knitter lands on the project they just made,
@@ -354,6 +361,7 @@ export default function StartProjectScreen() {
         }
       } catch (error) {
         setProblem(triage(error));
+        haptics.error();
       } finally {
         setBusy(false);
       }

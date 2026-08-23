@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
 
+import { haptics } from '@/haptics';
 import { radius, fonts, trackSmall, type, useTheme } from '@/theme';
 
 export type FilterChipProps = {
@@ -40,7 +41,10 @@ export function FilterChip({
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
       accessibilityLabel={value ? `${label} ${value}` : label}
-      onPress={onPress}
+      onPress={() => {
+        haptics.tap();
+        onPress?.();
+      }}
       // 40pt by the handoff; the slop restores the 48pt hit box.
       hitSlop={{ top: 4, bottom: 4 }}
       style={({ pressed }) => [

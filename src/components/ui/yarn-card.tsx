@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Badge } from "@/components/ui/badge";
 import { PhotoFrame } from "@/components/ui/photo-frame";
 import { Stamp } from "@/components/ui/stamp";
+import { haptics } from "@/haptics";
 import { fonts, space, type, useTheme } from "@/theme";
 
 export type YarnCardProps = {
@@ -43,11 +44,18 @@ export function YarnCard({
 }: YarnCardProps) {
   const { colors } = useTheme();
 
+  const press = onPress
+    ? () => {
+        haptics.tap();
+        onPress();
+      }
+    : undefined;
+
   return (
     <Pressable
       accessibilityRole={onPress ? "button" : undefined}
       accessibilityLabel={brand ? `${colorway}, ${brand}` : colorway}
-      onPress={onPress}
+      onPress={press}
       style={({ pressed }) => [
         styles.card,
         { borderColor: colors.hairline },

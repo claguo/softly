@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Badge } from "@/components/ui/badge";
 import { Stamp } from "@/components/ui/stamp";
+import { haptics } from "@/haptics";
 import { fonts, radius, space, tap, trackSmall, type, useTheme } from "@/theme";
 
 export type NeedleRowProps = {
@@ -16,6 +17,13 @@ export type NeedleRowProps = {
   /** Project currently using it; omit when the needle is free. */
   tiedUpIn?: string;
   onPress?: () => void;
+  /**
+   * The bottom hairline. It is a separator, and the caller is the one that
+   * knows when there is nothing to separate — a section counts its rows and
+   * passes false on the last, so it ends clean instead of doubling with the
+   * next section's own rule.
+   */
+  ruled?: boolean;
 };
 
 /**
@@ -35,18 +43,29 @@ export function NeedleRow({
   length,
   tiedUpIn,
   onPress,
+  ruled = true,
 }: NeedleRowProps) {
   const { colors } = useTheme();
   const free = !tiedUpIn;
+
+  const press = onPress
+    ? () => {
+        haptics.tap();
+        onPress();
+      }
+    : undefined;
 
   return (
     <Pressable
       accessibilityRole={onPress ? "button" : undefined}
       accessibilityLabel={`${kind} ${size} mm${tiedUpIn ? `, in ${tiedUpIn}` : ""}`}
-      onPress={onPress}
+      onPress={press}
       style={({ pressed }) => [
         styles.row,
-        { borderBottomColor: colors.hairline },
+        {
+          borderBottomWidth: ruled ? 1 : 0,
+          borderBottomColor: colors.hairline,
+        },
         pressed && onPress ? { backgroundColor: colors.surfaceSunk } : null,
       ]}
     >
@@ -93,7 +112,6 @@ const styles = StyleSheet.create({
     gap: space.s4,
     minHeight: tap.min,
     padding: space.s3,
-    borderBottomWidth: 1,
   },
   swatch: {
     width: 46,

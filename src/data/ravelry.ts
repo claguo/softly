@@ -11,10 +11,13 @@
  * `librarySearch`, `volumeShow`, `projectShow`, `getNeedleSizes`,
  * `getNeedleTypes` and `getYarnWeights` are single, online-only reads that go
  * straight to the caller asking for them. `createProject`, `createStashEntry`,
- * `updateProject`, `updateStashEntry`, `favoritesCreate`, `createProjectPhoto`,
- * `volumesCreate`, `requestUploadToken`, `volumesDelete` and
- * `generateDownloadLink` are the writes; the last three send no body, because
- * everything they need is already in the path.
+ * `updateProject`, `updateStashEntry`, `createPack`, `updatePack`,
+ * `favoritesCreate`, `createProjectPhoto`, `volumesCreate`,
+ * `requestUploadToken`, `volumesDelete`, `deleteProject`, `deleteStashEntry`,
+ * `deletePack`, `favoritesDelete` and `generateDownloadLink` are the writes;
+ * the last seven send no body, because everything they need is already in the
+ * path. The three packs are the only ones of those never watched arrive on a
+ * live account — see the note above `PackCreate`.
  *
  * `uploadImage` is the one call in this file that carries no token at all —
  * Ravelry's image host authenticates the single-use upload token in the form
@@ -206,7 +209,12 @@ function buildQuery(params?: QueryParams): string {
 }
 
 type RequestInit = {
-  method?: 'GET' | 'POST' | 'DELETE';
+  /**
+   * `PUT` is here for exactly one family of endpoints — the pack API, which is
+   * the only corner of Ravelry this app writes to that does not answer to a
+   * POST. See `updatePack`.
+   */
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   params?: QueryParams;
   /**
    * Sent as the raw JSON body. Ravelry's write endpoints document a `data`
@@ -305,6 +313,15 @@ export function authedFetch<T>(path: string, params?: QueryParams): Promise<T> {
  */
 export function authedPost<T>(path: string, payload?: unknown): Promise<T> {
   return request<T>(path, { method: 'POST', body: payload });
+}
+
+/**
+ * A PUT whose body is `payload` as raw JSON — the same encoding as
+ * `authedPost`, because the envelope trap is the transport's and not the
+ * verb's. Only the pack API asks for this method; see `updatePack`.
+ */
+export function authedPut<T>(path: string, payload?: unknown): Promise<T> {
+  return request<T>(path, { method: 'PUT', body: payload });
 }
 
 /** A DELETE against Ravelry. The deleted record comes back in the body. */
@@ -460,7 +477,15 @@ export async function patternsSearch(
 
   const body = await authedFetch<unknown>('/patterns/search.json', {
     ...filters,
-    query,
+    // Spread only when there is one, and that conditional is the whole point.
+    // Written flat as `query`, an absent one is `undefined` — which lands on
+    // top of a `query` that came through `filters` and takes it out, and
+    // `buildQuery` drops undefined without a word, so the search goes out
+    // having quietly lost the words it was for. `filters` is documented as
+    // Ravelry's params passed through untouched, so a caller that puts the
+    // query where the rest of the query string goes is not wrong, and this is
+    // what makes that true. An explicit query still wins over one in the bag.
+    ...(query === undefined ? {} : { query }),
     page,
     page_size: Math.min(pageSize, PAGE_SIZE),
     personal_attributes: personalAttributes ? 1 : undefined,
@@ -741,10 +766,26 @@ export async function createProject(
  * `completed` is the date a project came off the needles, and is the other
  * half of setting `project_status_id` to Finished — a finished project with no
  * completion date is a project Ravelry cannot sort.
+ *
+ * The four below it are `Project (POST)` fields this app only ever writes to a
+ * project that already exists. They are the sentences a knitter keeps changing
+ * their mind about — who it is for, what size it came out, and everything they
+ * wanted to say about knitting it — and none of them is a thing the casting-on
+ * sheet asks for, because none of them is knowable at the cast on. So they are
+ * declared here rather than on `ProjectCreate`: the type says which sheet
+ * writes them.
  */
 export type ProjectUpdate = Partial<Omit<ProjectCreate, 'packs'>> & {
   /** `YYYY-MM-DD`. */
   completed?: string;
+  /** Who the thing was knitted for, in the knitter's own words. */
+  made_for?: string;
+  /** The size it came out at, free text — Ravelry counts nothing here. */
+  size?: string;
+  /** Public, markdown. Everyone on ravelry.com can read this one. */
+  notes?: string;
+  /** The same box, for nobody but the knitter. */
+  private_notes?: string;
 };
 
 /** Changes one project on the signed-in knitter's account and returns it. */
@@ -762,6 +803,175 @@ export async function updateProject(
   }
 
   return updated;
+}
+
+/**
+ * Takes one project off Ravelry, permanently.
+ *
+ * `DELETE /projects/{username}/{id}.json` → 200, and the body is the project
+ * that was just destroyed — Ravelry hands back the corpse. Nothing here reads
+ * it: there is no undo to build out of a record the server no longer has, and
+ * pretending otherwise would be the cruellest thing in this file.
+ *
+ * This is the one write in the app that cannot be taken back. The photographs,
+ * the notes, the yarn it ate and the date it came off the needles all go with
+ * it, which is why the sheet that calls this asks twice.
+ */
+export async function deleteProject(username: string, projectId: number): Promise<void> {
+  await authedDelete<unknown>(`/projects/${person(username)}/${projectId}.json`);
+}
+
+/**
+ * The pack API — the only way to change a project's yarn once it exists.
+ *
+ * `ProjectCreate.packs` is a one-time offer: Ravelry takes yarn allocations at
+ * the cast on and never again through the project endpoint, and the
+ * documentation says so in as many words — *"Only allowed on project creation.
+ * For updating or deleting use the pack API methods."* Those methods are three
+ * calls that do not live under `/projects` at all, because a pack is its own
+ * record with its own id: `POST /packs/create.json`, `PUT /packs/{id}.json`,
+ * `DELETE /packs/{id}.json`.
+ *
+ * They are the least-tested corner of this file. Everything else here that
+ * writes was run against a live account and has a date beside it; these three
+ * are read off the documentation, which this API has already been caught being
+ * wrong about twice — the `{"data": …}` envelope that answers 200 and ignores
+ * every field, and `favorited_type`, which does not exist. So they are written
+ * the way the verified calls are written and no further: **raw JSON body, no
+ * envelope**, which is the one thing every write endpoint here has agreed on.
+ * Anything that turns out to differ belongs in `docs/ravelry-write-api.md` with
+ * a date on it, the way the other surprises did.
+ *
+ * A pack that names a `stash_id` inherits the yarn, the company, the colourway
+ * and the weight from that stash entry — the create/show response after a cast
+ * on carries all of it, verified 2026-08-19 — so `stash_id` is the whole
+ * payload for the way this app allocates yarn.
+ */
+export type PackCreate = {
+  /** The project the pack is being hung on. A pack belongs to exactly one. */
+  project_id: number;
+  /** The stash entry it draws from; the yarn and its facts come with it. */
+  stash_id?: number;
+  /** A database yarn instead, for a pack drawing on nothing in the stash. */
+  yarn_id?: number;
+};
+
+/**
+ * The fields an existing pack will accept.
+ *
+ * Partial like every other update in this file, and for the same reason: a pack
+ * a knitter has filled in on ravelry.com carries the dye lot, the shop, the
+ * skeins and how much of it went in, and none of that is on any screen in this
+ * app. Sending only what changed is what keeps those from being wiped by a
+ * phone that never knew they were there.
+ */
+export type PackUpdate = {
+  stash_id?: number;
+  yarn_id?: number;
+};
+
+/** One pack as Ravelry has it. `id` is what the other two calls are keyed by. */
+export type RavelryPack = {
+  id?: number;
+  [key: string]: unknown;
+};
+
+/**
+ * The pack out of whatever envelope it came in, or null.
+ *
+ * `readFavoriteId`'s posture, for `readFavoriteId`'s reason: nothing about these
+ * three endpoints has been watched arrive, so the documented `pack` key leads
+ * and the bare body stands behind it. Null is not a failure — a 200 means the
+ * pack is on the project whatever the response looks like — and no caller in
+ * this app needs the record anyway. They all refetch the project.
+ */
+function readPack(body: unknown): RavelryPack | null {
+  if (typeof body !== 'object' || body === null) {
+    return null;
+  }
+
+  const envelope = body as Record<string, unknown>;
+
+  for (const candidate of [envelope.pack, envelope.packs, envelope]) {
+    const record = Array.isArray(candidate) ? candidate[0] : candidate;
+    if (typeof record === 'object' && record !== null) {
+      return record as RavelryPack;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * The one guard these three calls get, and the reason is on the tin above.
+ *
+ * The failure this API has actually shipped is not a 500 — it is a **200 that
+ * changed nothing**: the `{"data": …}` envelope creates an empty project and
+ * says it worked, and `stash/{id}/update.json` accepts every field and keeps
+ * none. A sheet that reported success on one of those would be lying to the
+ * knitter, so where the answer is legible enough to check, it is checked: a
+ * pack that comes back naming a different skein than the one that was asked for
+ * is a failed write, whatever the status line said.
+ *
+ * Only where it is legible. An unreadable body, or one that simply does not
+ * echo the field, is not evidence of anything and passes.
+ */
+function confirmPack(path: string, sent: PackUpdate, got: RavelryPack | null): void {
+  if (got === null) {
+    return;
+  }
+
+  for (const key of ['stash_id', 'yarn_id'] as const) {
+    const wanted = sent[key];
+    const answered = got[key];
+
+    if (wanted !== undefined && answered !== undefined && answered !== wanted) {
+      throw new RavelryApiError(0, path, 'Ravelry did not move the yarn on this pack.');
+    }
+  }
+}
+
+/** Hangs one pack on a project that already exists. See `PackCreate`. */
+export async function createPack(pack: PackCreate): Promise<RavelryPack | null> {
+  const path = '/packs/create.json';
+  const made = readPack(await authedPost<unknown>(path, pack));
+
+  confirmPack(path, pack, made);
+
+  return made;
+}
+
+/**
+ * Changes one pack in place — `PUT`, which is this app's only one.
+ *
+ * In place rather than delete-and-recreate on purpose. Both would move the yarn,
+ * and only one of them keeps the dye lot, the shop, the skein count and the
+ * yardage that a knitter may have typed into this pack on the web; a recreated
+ * pack is a new empty record wearing the same yarn's name. The same argument
+ * the edit sheets make about notes, made about a pack.
+ */
+export async function updatePack(
+  packId: number,
+  changes: PackUpdate,
+): Promise<RavelryPack | null> {
+  const path = `/packs/${packId}.json`;
+  const updated = readPack(await authedPut<unknown>(path, changes));
+
+  confirmPack(path, changes, updated);
+
+  return updated;
+}
+
+/**
+ * Takes one pack off a project.
+ *
+ * The pack, not the stash entry: the yarn stays in the knitter's stash and this
+ * only unhooks it from the thing it was going into. That is why this one does
+ * not ask twice the way `deleteProject` and `deleteStashEntry` do — nothing is
+ * destroyed but an allocation, and choosing the yarn again puts one back.
+ */
+export async function deletePack(packId: number): Promise<void> {
+  await authedDelete<unknown>(`/packs/${packId}.json`);
 }
 
 /**
@@ -886,6 +1096,19 @@ export async function stashEntryShow(
 }
 
 /**
+ * Takes one skein out of the stash for good.
+ *
+ * `DELETE /people/{username}/stash/{id}.json` → 200, verified live on
+ * 2026-08-19 at the end of the create/update/read-back run that documented the
+ * rest of this endpoint. Like `deleteProject` it answers with the entry it just
+ * destroyed and, like `deleteProject`, nothing here keeps it — there is no
+ * undo, which is the whole reason the edit sheet asks a second time.
+ */
+export async function deleteStashEntry(username: string, id: number): Promise<void> {
+  await authedDelete<unknown>(`/people/${person(username)}/stash/${id}.json`);
+}
+
+/**
  * The new bookmark's own id, out of `{bookmark: {id, type, favorited: {…}}}`.
  *
  * `bookmark` is the observed key — watched arrive on 2026-08-20, see
@@ -895,8 +1118,9 @@ export async function stashEntryShow(
  * its envelope must not read as a failed bookmark.
  *
  * Null is a perfectly ordinary answer and not an error: the bookmark exists on
- * Ravelry the moment the POST answers 200, and the id is only wanted for a
- * delete this app does not perform.
+ * Ravelry the moment the POST answers 200, and the one caller that wants the id
+ * — the un-save behind the same button — can find it again in the mirror, where
+ * `favorites.id` is this same number.
  */
 function readFavoriteId(body: unknown): number | null {
   if (typeof body !== 'object' || body === null) {
@@ -946,8 +1170,9 @@ function readFavoriteId(body: unknown): number | null {
  *   pattern's — 591344946 against a pattern id of 7495801 — and it is what
  *   `favorites.id` holds in the local mirror.
  * - `DELETE /people/{username}/favorites/{bookmark_id}.json` answered 200 on
- *   cleanup, so un-bookmarking works and is keyed by that outer id. Nothing
- *   here calls it: this app has a Save button and deliberately no un-save.
+ *   cleanup, so un-bookmarking works and is keyed by that outer id.
+ *   `favoritesDelete` below is that call, and the outer id is why this one
+ *   bothers to read a response it could have thrown away.
  *
  * Only the two halves disagree, and both endpoints agree with each other
  * against the prose: `favorites/list.json` returns records keyed `type` too,
@@ -968,9 +1193,10 @@ function readFavoriteId(body: unknown): number | null {
  *
  * The response is still read by `readFavoriteId` and this still returns
  * `number | null` rather than a record. A 200 means the pattern is bookmarked;
- * a body in a shape nobody here has seen must not turn that into a failure,
- * and the id has no caller to disappoint. Only a request that never landed or
- * that Ravelry refused throws, both as `RavelryApiError` from `request`.
+ * a body in a shape nobody here has seen must not turn that into a failure, and
+ * the caller that wants the id has somewhere else to get it — the mirror row,
+ * keyed by the same number. Only a request that never landed or that Ravelry
+ * refused throws, both as `RavelryApiError` from `request`.
  */
 export async function favoritesCreate(
   username: string,
@@ -983,6 +1209,27 @@ export async function favoritesCreate(
   });
 
   return readFavoriteId(body);
+}
+
+/**
+ * Takes one bookmark away again — the second tap on the Save button.
+ *
+ * Keyed by the **bookmark's** id and never the pattern's: `DELETE
+ * /people/{username}/favorites/{bookmark_id}.json`, verified live on 2026-08-20
+ * on the cleanup half of the run documented above — bookmark 591344946 against
+ * pattern 7495801 — and answered 200. That is the number `favoritesCreate`
+ * returns and the number `favorites.id` holds in the mirror; a pattern id sent
+ * here addresses somebody else's bookmark or nothing at all, so the id is
+ * carried rather than worked out.
+ *
+ * Like the other deletes in this file it answers with the record it destroyed,
+ * and like the other deletes in this file nothing here keeps it. Unlike them
+ * there is a way back: saving the pattern again makes a new bookmark, with a
+ * new id and a new `created_at`. The same pattern in Saves, not the same
+ * bookmark — which is why the button that calls this does not stop to ask.
+ */
+export async function favoritesDelete(username: string, bookmarkId: number): Promise<void> {
+  await authedDelete<unknown>(`/people/${person(username)}/favorites/${bookmarkId}.json`);
 }
 
 // ---------------------------------------------------------------------------

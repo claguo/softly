@@ -67,13 +67,14 @@ import {
   useYarnSearch,
   yarnPhoto,
 } from "@/features/start-project/use-yarn-search";
+import { haptics } from "@/haptics";
 import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 const NOTICES: Record<Problem, string> = {
   failed: "Couldn't add the yarn.",
   // Aqua, not mustard: nothing went wrong, the request simply never left.
   offline: "You're offline · try again later.",
-  signedOut: "Sign in on the You tab to add yarn.",
+  signedOut: "Sign in on the Stash tab to add yarn.",
 };
 
 export default function AddYarnScreen() {
@@ -134,6 +135,7 @@ export default function AddYarnScreen() {
 
     if (username === null) {
       setProblem("signedOut");
+      haptics.error();
       return;
     }
 
@@ -187,9 +189,13 @@ export default function AddYarnScreen() {
           setPendingStashSelection(newId);
         }
 
+        // Said before the sheet goes: the skein is in the stash, and the screen
+        // underneath has no way to say so on this one's behalf.
+        haptics.success();
         router.back();
       } catch (error) {
         setProblem(triage(error));
+        haptics.error();
       } finally {
         setSaving(false);
       }
@@ -199,7 +205,7 @@ export default function AddYarnScreen() {
   // What the search has to say for itself, in one stamped line under the
   // field: never an empty results area, never a spinner.
   const searching = search.signedOut
-    ? "Sign in on the You tab to search yarns."
+    ? "Sign in on the Stash tab to search yarns."
     : search.unavailable
       ? "Search unavailable · check connection"
       : search.loading

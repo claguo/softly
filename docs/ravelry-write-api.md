@@ -38,6 +38,8 @@ Fields (all nullable): `stash_id` Integer (stash entry this pack draws from — 
 
 Pack lifecycle after creation: `POST /packs/create.json` (data=Pack POST), `PUT /packs/{pack_id}.json` update, `DELETE /packs/{pack_id}.json`, `GET /packs/{pack_id}.json`.
 
+**⚠️ IMPLEMENTED BUT NEVER WATCHED ARRIVE (2026-08-22).** `createPack`, `updatePack` and `deletePack` in `ravelry.ts` are the three above, written off this document and nothing else — they are the only writes in the app with no live 200 behind them. They assume the raw-JSON-body encoding every other write endpoint here has been proven to use, `{project_id, stash_id}` on create, `{stash_id}` on update, and a `pack` envelope on the response (read defensively; a missing envelope is not treated as failure). `confirmPack` throws when the response *does* echo a `stash_id` that disagrees with the one sent, because the silent-200 no-op is this API's signature failure. Edit project is the only caller. What still wants a live run: (1) does `PUT /packs/{id}.json {stash_id}` actually move the yarn, or 200-and-ignore; (2) does create want `project_id` in the body, and is the envelope key `pack`; (3) does DELETE take the pack without touching the stash entry it drew on. Record the answers here with a date, the way the `favorited_type` and `{"data": …}` traps were recorded.
+
 ## Other project ops
 
 - `POST /projects/{username}/{id}.json` — update (data = Project POST; packs NOT allowed here)

@@ -8,16 +8,28 @@
  * `getFavoriteByPatternId` for one cached row whole, `syncAll` plus
  * `useSyncStatus` for refreshing it, and `patternsSearch`/`patternShow`/
  * `yarnsSearch` for the things that only exist online. `createProject`,
- * `createStashEntry` and `favoritesCreate` write to Ravelry, and
+ * `createStashEntry` and `favoritesCreate` write to Ravelry, `updateProject`
+ * and `updateStashEntry` rewrite what is already there, and `deleteProject`
+ * and `deleteStashEntry` take one away — the only two calls in here with no
+ * way back, which is why both of their sheets ask twice before making one.
+ * `favoritesDelete` also takes one away and asks nothing at all: it undoes
+ * `favoritesCreate`, and `favoritesCreate` puts it back. `createPack`,
+ * `updatePack` and `deletePack` are the yarn on a project after the cast on —
+ * Ravelry will not take a pack through the project endpoint a second time, so
+ * moving a project onto another skein is its own small API, and `deletePack`
+ * unhooks an allocation without touching the skein it drew on.
  * `refreshProjects`/`refreshStash`/`refreshFavorites` are how the mirror
  * catches up afterwards — one table each, for the caller that already knows
- * which one it changed; `insertLocalNeedle` writes to the
- * mirror itself, because the needle drawer is the one thing Ravelry will not
- * be told about. `finishProject` is the other end of the same story — the
+ * which one it changed; `insertLocalNeedle` and `deleteLocalNeedle` write to
+ * the mirror itself, because the needle drawer is the one thing Ravelry will
+ * not be told about — and the delete refuses anything Ravelry owns, since a
+ * sync would only put it straight back. `finishProject` is the other end of the same story — the
  * photograph, the status and the refresh in one call that reports rather than
  * throws. `ensureProjectDetail` fetches the half of a project `list.json`
  * leaves out — the yarn it ate, the needles it tied up, the notes on it — and
- * keeps it on the device. `db` and the tables are here for anything that needs
+ * keeps it on the device; `forgetProjectDetail` throws that half away for a
+ * project nobody has any more, since no list will ever come along and notice.
+ * `db` and the tables are here for anything that needs
  * a query this module has not thought of yet.
  *
  * Offline patterns are their own small chain: `usePatternPdf` for what is
@@ -26,6 +38,14 @@
  * `ensurePatternPdf` and `addToLibraryAndDownload` for getting it there,
  * `importPatternPdf` for the far more common pattern whose PDF was never
  * Ravelry's to send, and `deletePatternPdf` for taking it away again.
+ *
+ * Row counters are the app's own the way the local needles are — Ravelry has
+ * no notion of one, so nothing about them is ever sent anywhere.
+ * `useRowCounters` is the counters on a project, `useRowCountersForProjects`
+ * the same thing for the reader, which is keyed by a pattern rather than a
+ * project; `insertRowCounter`, `updateRowCounter` and `deleteRowCounter` are
+ * the counter itself, and `adjustRowCounter` and `resetRowCounter` are where
+ * it has got to.
  *
  * Importing this opens the database and runs migrations.
  */
@@ -36,10 +56,16 @@ export {
   authedDelete,
   authedFetch,
   authedPost,
+  authedPut,
+  createPack,
   createProject,
   createProjectPhoto,
   createStashEntry,
+  deletePack,
+  deleteProject,
+  deleteStashEntry,
   favoritesCreate,
+  favoritesDelete,
   generateDownloadLink,
   getNeedleSizes,
   getNeedleTypes,
@@ -53,6 +79,7 @@ export {
   RavelryApiError,
   requestUploadToken,
   stashEntryShow,
+  updatePack,
   updateProject,
   updateStashEntry,
   uploadImage,
@@ -63,6 +90,8 @@ export {
   yarnWeightId,
   type LibrarySearchParams,
   type LibrarySearchResult,
+  type PackCreate,
+  type PackUpdate,
   type PagedRecords,
   type PatternSearchParams,
   type PatternSearchResult,
@@ -73,6 +102,7 @@ export {
   type RavelryDownloadLocation,
   type RavelryNeedleSize,
   type RavelryNeedleType,
+  type RavelryPack,
   type RavelryPaginator,
   type RavelryPatternDetail,
   type RavelryPatternSummary,
@@ -93,8 +123,10 @@ export {
 
 export {
   finishProject,
+  setProjectStatus,
   type FinishOutcome,
   type FinishProblem,
+  type StatusOutcome,
 } from '@/data/finish';
 
 export {
@@ -129,21 +161,38 @@ export {
   PROJECT_STATUS_FROGGED,
   PROJECT_STATUS_HIBERNATING,
   PROJECT_STATUS_IN_PROGRESS,
+  PROJECT_STATUSES,
   STASH_STATUS_IN_STASH,
   STASH_STATUSES,
   tintFor,
   YARN_WEIGHTS,
   type ColorFamily,
   type NeedleTypeName,
+  type ProjectStatusName,
   type StashStatusName,
   type YarnWeightName,
 } from '@/data/reference';
 
 export {
+  deleteLocalNeedle,
   insertLocalNeedle,
   updateLocalNeedle,
   type LocalNeedle,
 } from '@/data/local';
+
+export {
+  adjustRowCounter,
+  deleteRowCounter,
+  getRowCounter,
+  getRowCounters,
+  insertRowCounter,
+  resetRowCounter,
+  subscribeToRowCounters,
+  updateRowCounter,
+  useRowCounters,
+  useRowCountersForProjects,
+  type RowCounterDraft,
+} from '@/data/row-counters';
 
 export { fillStashPhotos, rememberYarnPhoto } from '@/data/yarn-photos';
 
@@ -153,7 +202,11 @@ export {
   getPatternPhoto,
 } from '@/data/pattern-photos';
 
-export { ensureProjectDetail, getProjectDetail } from '@/data/project-detail';
+export {
+  ensureProjectDetail,
+  forgetProjectDetail,
+  getProjectDetail,
+} from '@/data/project-detail';
 
 export {
   forgetYarnColor,
@@ -166,6 +219,7 @@ export {
   getFavoriteByPatternId,
   getNeedleById,
   getProjectById,
+  getProjectIdsByPatternId,
   getStashById,
   useStashEntry,
   useFavorites,
@@ -193,6 +247,7 @@ export {
   patternPhotos,
   projectDetails,
   projects,
+  rowCounters,
   stash,
   syncState,
   yarnColors,
@@ -205,6 +260,8 @@ export {
   type PatternPhotoRow,
   type ProjectDetailRow,
   type ProjectRow,
+  type RowCounterInsert,
+  type RowCounterRow,
   type StashRow,
   type SyncStateRow,
   type YarnColorRow,

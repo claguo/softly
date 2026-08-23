@@ -546,3 +546,28 @@ export function getFavoriteByPatternId(patternId: number): FavoriteRow | null {
     db.select().from(favorites).where(eq(favorites.patternId, patternId)).get(),
   );
 }
+
+/**
+ * The projects in this mirror knitted from one pattern.
+ *
+ * Ids only, and for one caller: the PDF reader is a route keyed by a pattern,
+ * and the row counters it floats over the page belong to projects. Opened from
+ * a project the reader is handed that project's id and never asks this; opened
+ * from the pattern screen there is nothing to be handed, and this is the walk
+ * back. Usually one row, occasionally two — a hat somebody has made twice —
+ * and empty for a pattern nobody has cast on, which is the common case and not
+ * a failure.
+ */
+export function getProjectIdsByPatternId(patternId: number): number[] {
+  try {
+    return db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.patternId, patternId))
+      .orderBy(desc(projects.updatedAtRemote))
+      .all()
+      .map((project) => project.id);
+  } catch {
+    return [];
+  }
+}

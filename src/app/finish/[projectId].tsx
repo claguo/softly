@@ -46,6 +46,7 @@ import { finishProject, getProjectById, type FinishProblem, type UploadFile } fr
 import { parseRaw, readId } from "@/features/detail/raw";
 import { projectFacts, stampedDate } from "@/features/finish/facts";
 import { chooseFromLibrary, takePhoto } from "@/features/finish/photo";
+import { haptics } from "@/haptics";
 import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 const NOTICES: Record<FinishProblem, string> = {
@@ -53,7 +54,7 @@ const NOTICES: Record<FinishProblem, string> = {
   // Aqua, not mustard: nothing went wrong, the request simply never left — and
   // nothing was written, so the same tap works later.
   offline: "You're offline · try again later.",
-  signedOut: "Sign in on the You tab to finish a project.",
+  signedOut: "Sign in on the Stash tab to finish a project.",
 };
 
 /** Where the picture was going to come from, and what to say when it did not. */
@@ -119,9 +120,11 @@ export default function FinishScreen() {
           return;
         }
 
-        // Backing out of the picker is not something to say anything about.
+        // Backing out of the picker is not something to say anything about,
+        // and that goes for the buzz as much as for the line.
         if (picked.kind !== "canceled") {
           setPhotoNotice(PHOTO_NOTICES[source][picked.kind]);
+          haptics.error();
         }
       })();
     },
@@ -138,6 +141,7 @@ export default function FinishScreen() {
 
     if (username === null) {
       setProblem("signedOut");
+      haptics.error();
       return;
     }
 
@@ -152,8 +156,14 @@ export default function FinishScreen() {
 
       if (!outcome.ok) {
         setProblem(outcome.reason);
+        haptics.error();
         return;
       }
+
+      // The one moment in this app worth a notification of its own. Said on the
+      // ok, not on the photograph: `photoFailed` is not acted on anywhere else
+      // here either, and a project is finished whether or not its picture went.
+      haptics.success();
 
       // `outcome.photoFailed` is deliberately not acted on here: see the head
       // of this file. The project is finished either way, and the screen this

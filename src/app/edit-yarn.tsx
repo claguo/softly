@@ -26,6 +26,16 @@
  *   twenty colour families as swatches. See `ColorGrid`.
  * - **Name** and **weight** appear only for an entry with no database yarn.
  *   Where Ravelry knows the yarn, those facts are the yarn's, not this skein's.
+ *
+ * At the far end of the form the sheet also takes the entry away, which is the
+ * one thing on it that is not a rewrite. It asks twice, and the row counter's
+ * delete does not, because the difference is real: a counter is a local row
+ * about where a sleeve got to and the knitter can make another, while this is a
+ * `DELETE` against Ravelry that takes the skein off every device the knitter
+ * owns and cannot be undone from anywhere. So the first tap only arms it and
+ * puts the sentence on screen, and any keystroke anywhere on the form puts it
+ * back to sleep. It leaves for the Stash tab rather than dismissing onto the
+ * yarn screen underneath, which by then is a husk.
  */
 
 import { router, useLocalSearchParams } from "expo-router";
@@ -46,6 +56,7 @@ import { Button } from "@/components/ui/app-button";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { TextField } from "@/components/ui/text-field";
 import {
+  deleteStashEntry,
   forgetYarnColor,
   getStashById,
   getYarnColor,
@@ -67,13 +78,21 @@ import {
 } from "@/features/detail/raw";
 import { triage, type Problem } from "@/features/start-project/problem";
 import { ColorGrid } from "@/features/stash/color-grid";
+import { haptics } from "@/haptics";
 import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 const NOTICES: Record<Problem, string> = {
   failed: "Couldn't save the changes.",
   // Aqua, not mustard: nothing went wrong, the request simply never left.
   offline: "You're offline · try again later.",
-  signedOut: "Sign in on the You tab to edit yarn.",
+  signedOut: "Sign in on the Stash tab to edit yarn.",
+};
+
+/** The same three sentences for the write that takes the skein away. */
+const DELETE_NOTICES: Record<Problem, string> = {
+  failed: "Couldn't delete the yarn.",
+  offline: "You're offline · try again later.",
+  signedOut: "Sign in on the Stash tab to delete yarn.",
 };
 
 /** What the sheet opened with, and what it compares against on the way out. */
@@ -149,7 +168,10 @@ export default function EditYarnScreen() {
   // away mid-edit.
   const [draft, setDraft] = useState<Draft>(opened);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [armed, setArmed] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
+  const [failedToDelete, setFailedToDelete] = useState(false);
 
   // Notes live nowhere but on the entry's own endpoint — see the note at the
   // top. Until this lands the box stays shut rather than inviting a knitter to
@@ -184,10 +206,28 @@ export default function EditYarnScreen() {
     };
   }, [id, username]);
 
-  const set = useCallback(<K extends keyof Draft>(key: K, value: Draft[K]) => {
-    setDraft((current) => ({ ...current, [key]: value }));
+  const busy = saving || deleting;
+
+  /**
+   * Anything the knitter touches, anywhere on the form.
+   *
+   * It clears the notice, which explained the last tap and not this one, and it
+   * disarms the delete — somebody who has gone back to editing has stopped
+   * asking to throw the skein away.
+   */
+  const touch = useCallback(() => {
     setProblem(null);
+    setFailedToDelete(false);
+    setArmed(false);
   }, []);
+
+  const set = useCallback(
+    <K extends keyof Draft>(key: K, value: Draft[K]) => {
+      setDraft((current) => ({ ...current, [key]: value }));
+      touch();
+    },
+    [touch],
+  );
 
   const notesChanged = notesOpened !== null && notes.trim() !== notesOpened;
 
@@ -204,16 +244,21 @@ export default function EditYarnScreen() {
         draft.weight !== opened.weight));
 
   const save = useCallback(() => {
-    if (saving || !changed || id === null) {
+    if (busy || !changed || id === null) {
       return;
     }
 
+    setArmed(false);
+
     if (username === null) {
       setProblem("signedOut");
+      setFailedToDelete(false);
+      haptics.error();
       return;
     }
 
     setProblem(null);
+    setFailedToDelete(false);
     setSaving(true);
 
     void (async () => {
@@ -287,14 +332,17 @@ export default function EditYarnScreen() {
         // edit has to be in it before this sheet gets out of the way.
         await refreshStash(username);
 
+        haptics.success();
         router.back();
       } catch (error) {
         setProblem(triage(error));
+        haptics.error();
       } finally {
         setSaving(false);
       }
     })();
   }, [
+    busy,
     changed,
     draft,
     hasDatabaseYarn,
@@ -302,9 +350,70 @@ export default function EditYarnScreen() {
     notes,
     notesChanged,
     opened,
-    saving,
     username,
   ]);
+
+  /**
+   * The delete, in two taps.
+   *
+   * The first only arms it and puts the sentence on screen. The second is the
+   * one that cannot be taken back — see the head of this file for why this
+   * sheet asks a second time where the row counter's does not.
+   */
+  const remove = useCallback(() => {
+    if (busy || id === null) {
+      return;
+    }
+
+    if (!armed) {
+      setArmed(true);
+      setProblem(null);
+      setFailedToDelete(false);
+      haptics.tap();
+      return;
+    }
+
+    if (username === null) {
+      // Nothing is attempted: a write with no account behind it fails at the
+      // client, and saying so here costs no round trip.
+      setProblem("signedOut");
+      setFailedToDelete(true);
+      setArmed(false);
+      haptics.error();
+      return;
+    }
+
+    setProblem(null);
+    setFailedToDelete(false);
+    setDeleting(true);
+
+    void (async () => {
+      try {
+        await deleteStashEntry(username, id);
+
+        // Only once Ravelry has agreed. The shade was matched by eye on this
+        // device and lives nowhere else, so it has to be forgotten by hand —
+        // a local row about a skein that no longer exists is a colour nobody
+        // will ever see again attached to an id that will be reissued.
+        forgetYarnColor(id);
+        await refreshStash(username);
+
+        haptics.warning();
+        // Not `back`. The screen under this sheet is the skein that has just
+        // stopped existing, and dismissing onto it would land the knitter on a
+        // record of nothing. `dismissTo` unwinds the stack until it finds the
+        // Stash tab and lands there instead.
+        router.dismissTo("/stash");
+      } catch (error) {
+        setProblem(triage(error));
+        setFailedToDelete(true);
+        setArmed(false);
+        haptics.error();
+      } finally {
+        setDeleting(false);
+      }
+    })();
+  }, [armed, busy, id, username]);
 
   const title = row?.colorway ?? row?.yarnName ?? "this yarn";
 
@@ -353,7 +462,7 @@ export default function EditYarnScreen() {
                     value={draft.personalName}
                     onChangeText={(value) => set("personalName", value)}
                     accessibilityLabel="Yarn name"
-                    editable={!saving}
+                    editable={!busy}
                     returnKeyType="done"
                   />
                 </View>
@@ -399,7 +508,7 @@ export default function EditYarnScreen() {
                 value={draft.colorway}
                 onChangeText={(value) => set("colorway", value)}
                 accessibilityLabel="Colorway"
-                editable={!saving}
+                editable={!busy}
                 returnKeyType="done"
               />
             </View>
@@ -415,7 +524,7 @@ export default function EditYarnScreen() {
                 hex={draft.colorHex}
                 onSelect={(value) => set("colorFamilyId", value)}
                 onTweak={(value) => set("colorHex", value)}
-                disabled={saving}
+                disabled={busy}
               />
             </View>
 
@@ -427,7 +536,7 @@ export default function EditYarnScreen() {
                 value={draft.dyeLot}
                 onChangeText={(value) => set("dyeLot", value)}
                 accessibilityLabel="Dye lot"
-                editable={!saving}
+                editable={!busy}
                 returnKeyType="done"
               />
             </View>
@@ -440,7 +549,7 @@ export default function EditYarnScreen() {
                 value={draft.location}
                 onChangeText={(value) => set("location", value)}
                 accessibilityLabel="Location"
-                editable={!saving}
+                editable={!busy}
                 returnKeyType="done"
               />
             </View>
@@ -475,9 +584,12 @@ export default function EditYarnScreen() {
               </Text>
               <TextField
                 value={notes}
-                onChangeText={setNotes}
+                onChangeText={(value) => {
+                  setNotes(value);
+                  touch();
+                }}
                 accessibilityLabel="Notes"
-                editable={!saving && notesOpened !== null}
+                editable={!busy && notesOpened !== null}
                 returnKeyType="done"
               />
               {notesOpened === null ? (
@@ -486,6 +598,38 @@ export default function EditYarnScreen() {
                   are
                 </Text>
               ) : null}
+            </View>
+
+            {/* The one thing on this sheet that is not a rewrite, at the far
+                end of the form from the action and uncoloured — this app has no
+                destructive tone, so the ghost button is how it says "least
+                likely thing anybody came here to do". See the head of this file
+                for why it asks twice where the row counter's does not. */}
+            <View style={styles.danger}>
+              {armed ? (
+                <View style={styles.block}>
+                  <Text style={[styles.note, { color: colors.ink2 }]}>
+                    This removes the yarn from your Ravelry stash. It
+                    can&rsquo;t be undone.
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={styles.aside}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  accessibilityLabel={
+                    armed
+                      ? "Tap again to delete this yarn from your stash"
+                      : "Delete this yarn"
+                  }
+                  onPress={remove}
+                >
+                  {armed ? "Tap again to delete" : "Delete yarn"}
+                </Button>
+              </View>
             </View>
           </ScrollView>
 
@@ -499,7 +643,11 @@ export default function EditYarnScreen() {
               },
             ]}
           >
-            {saving ? (
+            {deleting ? (
+              <Text style={[styles.stampLeft, { color: colors.ink2 }]}>
+                Deleting…
+              </Text>
+            ) : saving ? (
               <Text style={[styles.stampLeft, { color: colors.ink2 }]}>
                 Saving…
               </Text>
@@ -510,7 +658,7 @@ export default function EditYarnScreen() {
                   { color: problem === "failed" ? colors.mustard : colors.aqua },
                 ]}
               >
-                {NOTICES[problem]}
+                {(failedToDelete ? DELETE_NOTICES : NOTICES)[problem]}
               </Text>
             ) : null}
 
@@ -518,7 +666,7 @@ export default function EditYarnScreen() {
               variant="primary"
               size="lg"
               full
-              disabled={!changed || saving}
+              disabled={!changed || busy}
               onPress={save}
             >
               Save changes
@@ -589,6 +737,17 @@ const styles = StyleSheet.create({
   // edges, so the inset moves off the block and onto the label inside it.
   stack: { gap: space.s3 },
   weights: { gap: space.s2 },
+  /** The warning and the button it belongs to, held together as one block. */
+  danger: { gap: space.s2 },
+  aside: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.s2,
+    // The `sm` button's own 12pt of padding, pulled back, so the label starts
+    // on the same line as every field label above it — the same arithmetic the
+    // row-counter sheet's aside does.
+    paddingHorizontal: space.s4 - 12,
+  },
   rail: {
     // 17 rather than 16: every chip is `flush`, which pulls it 1px left to
     // share its neighbour's border, and the first chip has no neighbour.

@@ -106,6 +106,24 @@ function remember(projectId: number, raw: string): void {
     .run();
 }
 
+/**
+ * Throws away the second half of a project this account no longer has.
+ *
+ * For the one caller that deletes a project off Ravelry outright. The mirror's
+ * own row goes when `refreshProjects` reads a list the project is no longer on;
+ * this table is not built from any list, so nothing would ever come along and
+ * notice — the yarn, the needles and the notes of a deleted sweater would sit
+ * here for the life of the install, and a screen keyed by that id would draw
+ * them.
+ *
+ * Nothing is notified by hand. `addDatabaseChangeListener` above fires on a
+ * delete exactly as it does on a write, so a screen still holding this project
+ * hears about it on the same path as everything else.
+ */
+export function forgetProjectDetail(projectId: number): void {
+  db.delete(projectDetails).where(eq(projectDetails.projectId, projectId)).run();
+}
+
 /** Guards against two screens asking about the same project at once. */
 const running = new Map<number, Promise<boolean>>();
 

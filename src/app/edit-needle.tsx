@@ -46,6 +46,7 @@ import {
   type SizeOption,
 } from "@/features/start-project/needle-sizes";
 import { SizeGrid } from "@/features/start-project/rows";
+import { haptics } from "@/haptics";
 import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 /** Nothing chosen, as a stable array: a new `[]` each render is a new prop. */
@@ -174,12 +175,15 @@ export default function EditNeedleScreen() {
       if (written === null) {
         // The data layer refused it: not ours to change. Nothing was written.
         setFailed(true);
+        haptics.error();
         return;
       }
 
+      haptics.success();
       router.back();
     } catch {
       setFailed(true);
+      haptics.error();
     } finally {
       setSaving(false);
     }

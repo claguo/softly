@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "@/auth/context";
+import { haptics } from "@/haptics";
 import { fonts, radius, space, tap, trackSmall, type, useTheme } from "@/theme";
 
 /**
@@ -29,15 +30,20 @@ export default function WelcomeScreen() {
   const [failed, setFailed] = useState(false);
 
   const handleSignIn = async () => {
+    // Hand-drawn, but it is still the one filled button on the screen, so it
+    // gets the weight every other primary button in the app gets.
+    haptics.commit();
     // Every attempt starts clean: the last failure line clears on retry.
     setFailed(false);
     setBusy(true);
     try {
       await signIn();
+      haptics.success();
     } catch {
       // Cancelled browser, state mismatch, no network — all the same to the
       // reader: it didn't complete. No red, no dialog, no stack.
       setFailed(true);
+      haptics.error();
     } finally {
       setBusy(false);
     }

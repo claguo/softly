@@ -4,9 +4,13 @@ import { FloatingTabBar } from '@/components/tab-bar';
 import { useTheme } from '@/theme';
 
 /**
- * The five tabs, grouped so the root stack can push detail screens over the
+ * The four tabs, grouped so the root stack can push detail screens over the
  * whole thing. The route names here are load-bearing: `FloatingTabBar` maps
- * them to its five glyphs.
+ * them to its four icons.
+ *
+ * Stash sits last, on the right, because it absorbed You: the account lives in
+ * its header now, and the corner nearest the thumb is where an account has
+ * always been reached for.
  */
 export default function TabsLayout() {
   const { colors } = useTheme();
@@ -25,9 +29,8 @@ export default function TabsLayout() {
       }}>
       <Tabs.Screen name="index" options={{ title: 'Home' }} />
       <Tabs.Screen name="saves" options={{ title: 'Saves' }} />
-      <Tabs.Screen name="stash" options={{ title: 'Stash' }} />
       <Tabs.Screen name="discover" options={{ title: 'Discover' }} />
-      <Tabs.Screen name="you" options={{ title: 'You' }} />
+      <Tabs.Screen name="stash" options={{ title: 'Stash' }} />
     </Tabs>
   );
 }

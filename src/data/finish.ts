@@ -30,6 +30,11 @@
  *
  * Nothing here throws. Every caller gets a `FinishOutcome`, the same way
  * `syncAll` and the PDF chain report rather than raise.
+ *
+ * `setProjectStatus` at the foot of the file is the same write with the
+ * celebration taken out of it — one field, no ceremony — for the three statuses
+ * that are not a finish. It shares the triage and the contract; it shares
+ * nothing else, and the note above it says why.
  */
 
 import { SignedOutError } from '@/auth/client';
@@ -140,4 +145,43 @@ export async function finishProject(
   await refreshProjects(username);
 
   return { ok: true, photoFailed };
+}
+
+export type StatusOutcome =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: FinishProblem };
+
+/**
+ * Moves one project to a status, and does nothing else about it.
+ *
+ * This is the plain half of what `finishProject` does: one field, no
+ * photograph, no completion date, no three-call ordering to get right — because
+ * the statuses it is for are not a celebration. Hibernating is a project put in
+ * a bag; Frogged is one pulled out; In progress is either of those picked back
+ * up, and none of them is a moment anybody wants a modal for.
+ *
+ * Finishing stays where it is. It is the one status change worth a screen — the
+ * photograph and the date are the whole reason that screen exists — which is
+ * why the one caller of this function routes `PROJECT_STATUS_FINISHED` to
+ * `/finish/[projectId]` and never sends it here.
+ *
+ * Same contract as everything else in this file: report, do not throw. The
+ * refresh is awaited so the mirror is level before the caller redraws, and its
+ * own failure is not a failed status change — the write already landed, and
+ * `refreshProjects` reports rather than throwing in any case.
+ */
+export async function setProjectStatus(
+  username: string,
+  projectId: number,
+  statusId: number,
+): Promise<StatusOutcome> {
+  try {
+    await updateProject(username, projectId, { project_status_id: statusId });
+  } catch (error) {
+    return { ok: false, reason: triage(error) };
+  }
+
+  await refreshProjects(username);
+
+  return { ok: true };
 }

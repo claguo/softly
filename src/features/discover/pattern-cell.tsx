@@ -16,10 +16,12 @@
  * none.
  */
 
+import Feather from '@react-native-vector-icons/feather';
 import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PhotoFrame } from '@/components/ui';
+import { haptics } from '@/haptics';
 import { fonts, trackSmall, type, useTheme } from '@/theme';
 
 export type PatternCellProps = {
@@ -49,12 +51,24 @@ export const PatternCell = memo(function PatternCell({
 }: PatternCellProps) {
   const { colors } = useTheme();
 
+  // Built rather than wrapped in place, because the handler has to stay absent
+  // and not merely empty: a cell with no route draws no pressed field and must
+  // answer no finger either, and a buzz is the loudest way to promise a tap did
+  // something.
+  const press =
+    onPress === undefined
+      ? undefined
+      : () => {
+          haptics.tap();
+          onPress();
+        };
+
   return (
     <Pressable
       accessible
       accessibilityRole={onPress ? 'button' : undefined}
       accessibilityLabel={meta ? `${name}, ${meta}` : name}
-      onPress={onPress}
+      onPress={press}
       // The cell draws its right and bottom edges; the row draws the left and
       // the list's first row sits under the rail's hairline. Every line in the
       // grid is therefore exactly one hairline wide, shared by two cells.
@@ -72,9 +86,11 @@ export const PatternCell = memo(function PatternCell({
           // the knitter set, so it is drawn in the same ink everything else the
           // knitter wrote is drawn in. The surface chip behind it is what lifts
           // it off the photograph, and it has to, because ink and a photograph
-          // can land anywhere against each other.
+          // can land anywhere against each other. Feather draws the heart as
+          // an outline where the character was filled; 14 holds it to about
+          // the measure the 13pt glyph set inside the same 26pt chip.
           <View style={[styles.saved, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.savedGlyph, { color: colors.ink }]}>♥</Text>
+            <Feather name="heart" size={14} color={colors.ink} />
           </View>
         ) : null}
       </View>
@@ -127,10 +143,5 @@ const styles = StyleSheet.create({
     height: 26,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  savedGlyph: {
-    fontFamily: fonts.ui,
-    fontSize: 13,
-    lineHeight: 16,
   },
 });

@@ -27,6 +27,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { COLOR_FAMILIES, colorFamily } from '@/data';
 import { ColorTuner } from '@/features/stash/color-tuner';
+import { haptics } from '@/haptics';
 import { fonts, radius, space, trackSmall, type, useTheme } from '@/theme';
 
 export type ColorGridProps = {
@@ -110,7 +111,10 @@ export function ColorGrid({
               accessibilityLabel={active ? `${family.label}, tap again to adjust` : family.label}
               disabled={disabled}
               hitSlop={SLOP}
-              onPress={() => press(family.id)}
+              onPress={() => {
+                haptics.tap();
+                press(family.id);
+              }}
               style={({ pressed }) => [
                 styles.swatch,
                 {
@@ -156,7 +160,10 @@ export function ColorGrid({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Clear colour"
-            onPress={clear}
+            onPress={() => {
+              haptics.tap();
+              clear();
+            }}
             hitSlop={{ top: space.s2, bottom: space.s2, left: space.s2, right: space.s2 }}>
             {({ pressed }) => (
               <Text style={[styles.clear, { color: pressed ? colors.ink : colors.ink2 }]}>

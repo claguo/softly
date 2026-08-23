@@ -9,24 +9,32 @@
  * are online.
  *
  * Layout is the handoff's, which is unusual in one way worth naming: the title
- * block, the mode row and the filter row are all *fixed*, and only the grid
- * scrolls. That is what puts the grid's own hairline border at the top of the
- * scroll area — here it is drawn as the chrome's bottom edge so it stays put
- * while the grid moves under it, which reads as the boundary it is.
+ * block, the search field, the mode row and the filter row are all *fixed*, and
+ * only the grid scrolls. That is what puts the grid's own hairline border at the
+ * top of the scroll area — here it is drawn as the chrome's bottom edge so it
+ * stays put while the grid moves under it, which reads as the boundary it is.
  *
- * Three bands, and each one holds a different kind of thing:
+ * Four bands, and each one holds a different kind of thing:
  *
  * 1. **Discover**, with the count across from it on the same line, saying
  *    plainly what the filters below found. It says nothing about *which*
- *    filters — the two rows underneath are already doing that, and a count that
+ *    filters — the rows underneath are already doing that, and a count that
  *    restated them would be the screen talking over itself.
- * 2. **The mode row**: a sentence and a switch. What it turns on is a *derived*
+ * 2. **The search field**, under a label that names exactly what it looks in.
+ *    Ravelry's `query` matches pattern names and designer names, so the label
+ *    says both and promises nothing further — this is not a search of the
+ *    pattern text. The words never become a chip and never count towards **All
+ *    filters**: a chip exists so the screen says out loud what it is filtering
+ *    on, and a field with words in it is already saying it, in the words
+ *    themselves. **Clear** is the one way back out, and it is only there when
+ *    there is something to clear.
+ * 3. **The mode row**: a sentence and a switch. What it turns on is a *derived*
  *    filter set — the drawer restated as yarn weights and a needle range — and
  *    it is a mode rather than a value, which is why it is a switch up here
  *    rather than another chip down among the things it sets. It is also the one
  *    control on the screen that has to explain itself, hence a whole sentence
  *    where everything else gets two words.
- * 3. **The filter row**: **All filters** pinned at the left, the whole of
+ * 4. **The filter row**: **All filters** pinned at the left, the whole of
  *    Ravelry's vocabulary one tap behind it, and beside it the rail — one
  *    removable chip per set value, whichever control set it, so the screen
  *    never filters on something it has not said out loud.
@@ -49,7 +57,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-n
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/auth/context';
-import { FilterChip, Switch } from '@/components/ui';
+import { FilterChip, Switch, TextField } from '@/components/ui';
 import { useNeedles, useStash, type RavelryPatternSummary } from '@/data';
 import { FilterSheet } from '@/features/discover/filter-sheet';
 import {
@@ -75,6 +83,7 @@ import {
   type StashWeight,
 } from '@/features/discover/stash-profile';
 import { usePatternSearch } from '@/features/discover/use-pattern-search';
+import { haptics } from '@/haptics';
 import { fonts, space, tabBarInset, tap, trackSmall, type, useTheme } from '@/theme';
 
 /**
@@ -102,6 +111,40 @@ const MAKEABLE_LABEL = 'Makeable with materials in your stash';
  */
 const MODE_ROW_DRAWN = 40;
 const MODE_SLOP = (tap.min - MODE_ROW_DRAWN) / 2;
+
+/**
+ * What the search field looks in, said once.
+ *
+ * Ravelry's `query` on `/patterns/search.json` matches pattern names and
+ * designer names server-side and nothing else, and this is the sentence that
+ * promises exactly that much. Written once because it is said twice — printed
+ * as the field's label and handed to the field as its accessible name — and a
+ * box that reads one thing and announces another is a box a screen reader user
+ * is being lied to about.
+ */
+const SEARCH_LABEL = 'Search patterns and designers';
+
+/**
+ * The label row's height, and the one place on this screen that buys a target
+ * by being drawn rather than by `hitSlop`.
+ *
+ * **Clear** is one line of small type — 18pt — and it owes a finger the same 48
+ * as everything else here. It cannot borrow that the way the chips and the mode
+ * row do. Their slop works because it stays inside a parent that is already
+ * that big: the filter row's 12 and 14 of padding hold the chips' 4, and the
+ * mode row's own 4 falls inside the chrome. Slop that leaves its parent's box
+ * is hit-tested on iOS and *not* on Android, which would make this a 48pt
+ * button on one platform and an 18pt one on the other — so the row is drawn at
+ * the full 48 instead and **Clear** takes all of it, height and a finger's
+ * width, as a real box.
+ *
+ * The row pays for itself. It is pulled up by exactly the gap `titleBlock`
+ * leaves under the count, and the 15pt its own centring puts under the label is
+ * the air the field would have needed above it anyway — so the band costs 10pt
+ * more than a bare label over a bare box, not 30. Nothing here is empty: at
+ * large type the label wraps and the row grows under it.
+ */
+const SEARCH_HEAD_HEIGHT = tap.min;
 
 /**
  * The stash profile as one string.
@@ -162,6 +205,19 @@ export default function DiscoverScreen() {
   const [applied, setApplied] = useState(signature);
 
   /**
+   * The typed words, held apart from the filters on purpose.
+   *
+   * Everything else on this screen goes through `settle`, which re-reads the
+   * mode flag off whatever was just committed. Words are not a filter in that
+   * sense: typing "shawl" does not stop the results being the stash's yarn
+   * weights and the drawer's needles, so routing them through `settle` would
+   * ask `matchesStashProfile` about a value it has no opinion on and drop the
+   * mode for a reason that has nothing to do with the mode. The hook takes the
+   * two separately for the same reason.
+   */
+  const [query, setQuery] = useState('');
+
+  /**
    * Keeping the mode's filters level with the drawer.
    *
    * A sync landing mid-session can add a weight that was not there when the
@@ -180,7 +236,7 @@ export default function DiscoverScreen() {
     setFilters((current) => withStashProfile(current, stashWeights, stashRange));
   }
 
-  const search = usePatternSearch(toSearchParams(filters), status === 'signedIn');
+  const search = usePatternSearch(toSearchParams(filters), query, status === 'signedIn');
   const signedOut = status === 'signedOut' || search.signedOut;
   // Auth restoring from secure store reads the same as a search in flight:
   // something is coming, and the grid is not empty, it is not filled in yet.
@@ -210,6 +266,9 @@ export default function DiscoverScreen() {
   };
 
   const toggleMakeable = () => {
+    // The row owns the press, so the row owns the tick: `Switch` is a drawing
+    // and `settle` is shared with the chips, which tick for themselves.
+    haptics.tap();
     settle(
       makeable
         ? withoutStashProfile(filters)
@@ -245,7 +304,7 @@ export default function DiscoverScreen() {
         <View style={styles.invitation}>
           <Text style={[styles.title, { color: colors.ink }]}>Discover</Text>
           <Text style={[styles.lede, { color: colors.ink2 }]}>
-            Sign in on the You tab and Discover will search Ravelry against your own stash.
+            Sign in on the Stash tab and Discover will search Ravelry against your own stash.
           </Text>
         </View>
       ) : (
@@ -263,6 +322,62 @@ export default function DiscoverScreen() {
               <Text numberOfLines={1} style={[styles.count, { color: colors.ink2 }]}>
                 {search.total === null ? '' : formatResultCount(search.total)}
               </Text>
+            </View>
+
+            {/* Label above the box, never a placeholder — `TextField` has no
+                placeholder prop for the reason it gives: a label that vanishes
+                the moment somebody types is not a label, and this one is
+                carrying the scope of the search, which is exactly the thing a
+                half-typed query needs to still be able to check.
+
+                The box is the app's ordinary multiline field and it is left
+                that way. A long designer name wraps and the field takes a
+                second line, which pushes the grid down — the same bargain the
+                mode row's sentence already makes two bands lower, and the
+                alternative is a query scrolling off its own right edge where it
+                cannot be read back. */}
+            <View style={styles.searchBlock}>
+              <View style={styles.searchHead}>
+                <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>{SEARCH_LABEL}</Text>
+
+                {/* Only when there is something to clear, and its coming and
+                    going costs the row no height: the row is floored at
+                    `SEARCH_HEAD_HEIGHT` whether it is there or not, so the
+                    chrome does not jump under the first keystroke. */}
+                {query === '' ? null : (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear search"
+                    onPress={() => {
+                      haptics.tap();
+                      setQuery('');
+                    }}
+                    style={styles.clearTarget}>
+                    {({ pressed }) => (
+                      <Text
+                        style={[
+                          styles.clear,
+                          { color: pressed ? colors.linkPressed : colors.link },
+                        ]}>
+                        Clear
+                      </Text>
+                    )}
+                  </Pressable>
+                )}
+              </View>
+
+              {/* No `autoFocus`. Discover opens on an answer — everything the
+                  stash could cast on tonight — and a keyboard over that answer
+                  would be the screen asking a question instead. Return closes
+                  the keyboard and nothing else: the search is already running,
+                  300ms behind the typing, so a submit key that "ran" it would
+                  be a button for something that had already happened. */}
+              <TextField
+                value={query}
+                onChangeText={setQuery}
+                accessibilityLabel={SEARCH_LABEL}
+                returnKeyType="done"
+              />
             </View>
 
             {/* One control, not two. The sentence is the switch's name rather
@@ -353,10 +468,16 @@ export default function DiscoverScreen() {
             initialNumToRender={8}
             maxToRenderPerBatch={8}
             windowSize={7}
+            // Dragging the grid is how the keyboard leaves, and a tap on a
+            // result while it is still up opens that result rather than being
+            // eaten as a dismissal — the finger was on a pattern, so the tap
+            // was for the pattern.
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
             ListEmptyComponent={
               search.unavailable && !settling ? null : (
                 <Text style={[styles.quiet, { color: colors.ink2 }]}>
-                  {settling ? 'Searching' : 'No patterns match these filters.'}
+                  {settling ? 'Searching' : nothingFound(query.trim(), count)}
                 </Text>
               )
             }
@@ -383,6 +504,26 @@ function keyOf(pattern: RavelryPatternSummary, index: number): string {
   return typeof pattern.id === 'number' ? String(pattern.id) : `row-${index}`;
 }
 
+/**
+ * What the grid says when there is nothing in it.
+ *
+ * It names whichever of the two things is doing the narrowing, because the one
+ * line it used to say sent everybody to the same place. "No patterns match
+ * these filters" under a misspelled designer is an instruction to go and undo
+ * filters that were never the problem, and the same line under no filters at
+ * all is the screen blaming something that is not there. The query is printed
+ * back rather than described so that a typo is visible as a typo.
+ */
+function nothingFound(query: string, filterCount: number): string {
+  if (query === '') {
+    return 'No patterns match these filters.';
+  }
+
+  return filterCount > 0
+    ? `No patterns match “${query}” and these filters.`
+    : `No patterns match “${query}”.`;
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   // Fixed chrome. Its bottom edge is the grid's own top hairline.
@@ -395,9 +536,11 @@ const styles = StyleSheet.create({
     gap: space.s3,
     paddingTop: space.s5,
     paddingHorizontal: space.s4,
-    // The whole gap above the mode row, in one place. It used to be spread
+    // The whole gap down to the band below, in one place. It used to be spread
     // across a count's margin, the row's own margin and the row's floor, which
-    // is how a band nobody had measured ended up 92pt deep.
+    // is how a band nobody had measured ended up 92pt deep. The search block
+    // took over that band and pays nothing at its own top, so this is still
+    // the only place the gap is written.
     paddingBottom: space.s3,
   },
   title: {
@@ -415,6 +558,63 @@ const styles = StyleSheet.create({
     letterSpacing: trackSmall,
     // Lifts the count off its own descender so it sits on the title's baseline.
     paddingBottom: space.s1,
+  },
+  searchBlock: {
+    paddingHorizontal: space.s4,
+    // Up by the gap `titleBlock` pays under the count, because the label row
+    // below carries its own — the row is drawn at 48 to hold **Clear**'s box
+    // and centres an 18pt label in it, which leaves 15 above the words. Left
+    // as it was, that 15 would sit under the block's own 12 and the band would
+    // open with 27pt of nothing, which is the 92pt band starting over.
+    //
+    // Negative here rather than on the row inside it, and that is the part to
+    // not "tidy": pulling the *row* up would put its box outside this view,
+    // and a touch outside a parent is not hit-tested on Android. Pulled here,
+    // the whole block moves and every box in it stays inside `chrome`.
+    marginTop: -space.s3,
+    // No gap: the row's own centring is the space above the box.
+    //
+    // The floor is the filter row's sum in miniature. The mode row under this
+    // carries `MODE_SLOP` of 4 and the field's box carries no slop at all, so
+    // 12 leaves 8pt belonging to neither control. Take it under 4 and the mode
+    // row's target reaches up over the bottom edge of the box, and a tap on
+    // the end of a half-typed query toggles the mode instead.
+    paddingBottom: space.s3,
+  },
+  searchHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.s3,
+    // A floor, not a height — see `SEARCH_HEAD_HEIGHT`. A label that wraps at
+    // large type grows the row and takes the box down with it.
+    minHeight: SEARCH_HEAD_HEIGHT,
+  },
+  fieldLabel: {
+    // Takes what **Clear** leaves and wraps inside it. It is 29 characters and
+    // it wraps rather than ellipsing, for the reason the mode row's sentence
+    // does: it is the only place the field says what it looks in.
+    flexShrink: 1,
+    fontFamily: fonts.ui,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
+  },
+  clearTarget: {
+    // The whole of the row's height and a finger's width of it, drawn rather
+    // than slopped. `stretch` overrides the row's centring so the box is the
+    // row; the word inside it stays centred and sits at the right-hand end,
+    // hard against the screen's own 16pt inset where the thumb already is.
+    alignSelf: 'stretch',
+    minWidth: tap.min,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+  },
+  clear: {
+    fontFamily: fonts.ui,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
   },
   modeRow: {
     flexDirection: 'row',

@@ -22,15 +22,35 @@
 
 import * as Sharing from "expo-sharing";
 import { router, useLocalSearchParams } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
 import { Button } from "@/components/ui/app-button";
-import { getPatternPdf, patternPdfDirectoryUri } from "@/data";
+import {
+  adjustRowCounter,
+  getPatternPdf,
+  getProjectIdsByPatternId,
+  patternPdfDirectoryUri,
+  useRowCountersForProjects,
+  type RowCounterRow,
+} from "@/data";
+import { activeCounters } from "@/features/counters/counter";
+import { CounterRow } from "@/features/counters/rows";
 import { readId, readParam } from "@/features/detail/raw";
-import { fonts, space, tap, trackSmall, type, useTheme } from "@/theme";
+import { haptics } from "@/haptics";
+import { fonts, radius, space, tap, trackSmall, type, useTheme } from "@/theme";
 
 /**
  * The way back, with no bar under it.
@@ -50,7 +70,11 @@ function FloatingBack() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Back"
-      onPress={() => router.back()}
+      onPress={() => {
+        // `BackBar`'s control lifted out of the bar keeps `BackBar`'s tick.
+        haptics.tap();
+        router.back();
+      }}
       style={[styles.back, { top: insets.top }]}
     >
       {({ pressed }) => (
@@ -59,6 +83,193 @@ function FloatingBack() {
         </Text>
       )}
     </Pressable>
+  );
+}
+
+/**
+ * The counters, floating over the foot of the page.
+ *
+ * This is the one place in the app where counting and reading happen at the
+ * same time, which is the whole reason it is here: a knitter following a chart
+ * has the pattern in front of them and the count in their head, and going back
+ * to the project screen to move it means losing their place twice.
+ *
+ * It is painted, unlike the way out above it, and the reasoning that keeps
+ * that one unpainted is what says so. Nothing is drawn behind `FloatingBack`
+ * because the top of a page is the designer's margin and a fill there would
+ * put the bar back a shade at a time. The foot of a page is not margin — it is
+ * whatever the designer put there, a chart, a schematic, a block of small
+ * type — and a number that cannot be read over it has failed at the one thing
+ * it is for. So this takes paper and a hairline off the top of it, which is
+ * the least that can be spent to make it legible on any page it lands on.
+ *
+ * Only counters still being worked appear. One that reaches its total leaves
+ * the bar by itself, and a project whose counters are all done has no bar at
+ * all — silence, the same as every other empty section in the app.
+ *
+ * **One at a time, swiped between.** They used to stack, which was honest and
+ * cost the page a row of it for every counter on the project — three counters
+ * and a sixth of the pattern is under the bar. So the bar is one row tall
+ * whatever is in it and the others are a swipe sideways: the knitter is
+ * already holding the phone in the hand they turn pages with, and a sleeve is
+ * not being counted at the same instant as a body. It is deliberately not a
+ * pair of arrows or a list that unfolds — either would be a control drawn on
+ * top of a pattern, and the gesture is already there.
+ */
+function FloatingCounters({ counters }: { counters: readonly RowCounterRow[] }) {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  /**
+   * A page is the window wide, and known before the first frame.
+   *
+   * The bar is pinned `left: 0, right: 0` with no padding of its own, so its
+   * width *is* the window's and there is nothing to measure. That matters more
+   * here than it usually would: a pager sized from `onLayout` spends its first
+   * frame at whatever width its contents happen to want, and this one is drawn
+   * over somebody's pattern where a frame of the wrong thing is a flinch.
+   */
+  const { width } = useWindowDimensions();
+
+  const pager = useRef<ScrollView | null>(null);
+  const [page, setPage] = useState(0);
+  /**
+   * Where the pager was left, kept beside the state rather than in it, so that
+   * settling below can depend on the number of counters alone. In state it
+   * would have to be a dependency, and the settle would re-fire on every swipe
+   * and yank a scroll the knitter was still finishing.
+   */
+  const landed = useRef(0);
+
+  const count = counters.length;
+
+  const settle = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const span = event.nativeEvent.layoutMeasurement.width;
+
+    if (span === 0) {
+      return;
+    }
+
+    const at = Math.round(event.nativeEvent.contentOffset.x / span);
+    landed.current = at;
+    setPage(at);
+  }, []);
+
+  /**
+   * The pages change underneath the pager, which is the whole difficulty.
+   *
+   * A counter reaching its total drops out of this list live — that is the
+   * point of the list — and it can be the very one being looked at, moved by
+   * the plus under the knitter's thumb. A scroll view holding an offset past
+   * the end of its own content draws the blank there rather than refusing, so
+   * the offset is brought back to the last real page by hand. It runs when the
+   * pages grow too, where it changes nothing and costs a `scrollTo` to the
+   * place the pager is already at: the alternative is telling the two cases
+   * apart for no gain.
+   */
+  useEffect(() => {
+    const at = count === 0 ? 0 : Math.min(landed.current, count - 1);
+
+    landed.current = at;
+    setPage(at);
+    pager.current?.scrollTo({ x: at * width, animated: false });
+  }, [count, width]);
+
+  if (count === 0) {
+    return null;
+  }
+
+  // The effect above lands here a frame later; clamping at draw time is what
+  // keeps the dots from all going dark for that frame, and the count under
+  // them from reading "3 of 2".
+  const at = Math.min(page, count - 1);
+
+  // No `onOpen` on either path: renaming a counter is not something anybody is
+  // doing with a pattern open, and a sheet over the page would take the knitter
+  // off it. The project screen is where a counter is edited.
+  const draw = (counter: RowCounterRow) => (
+    <CounterRow
+      counter={counter}
+      compact
+      onAdjust={(delta) => adjustRowCounter(counter.id, delta)}
+    />
+  );
+
+  return (
+    <View
+      style={[
+        styles.counters,
+        {
+          backgroundColor: colors.paper,
+          borderTopColor: colors.hairline,
+          // The home indicator's strip, or a plain margin on a phone with no
+          // indicator to clear — never nothing, or the steppers sit on the
+          // very edge of the glass.
+          paddingBottom: Math.max(insets.bottom, space.s2),
+        },
+      ]}
+    >
+      {count === 1 ? (
+        // One counter is the ordinary case, and it is drawn the ordinary way:
+        // no pager around it and no dots under it. A pager with one page is a
+        // gesture that does nothing and a control that says nothing, and this
+        // screen's whole argument is that chrome has to earn the page it
+        // covers.
+        draw(counters[0])
+      ) : (
+        <>
+          <ScrollView
+            ref={pager}
+            horizontal
+            pagingEnabled
+            // A page is the window, so a swipe cannot land between two of them.
+            // The lock is for the other axis: a thumb coming off a stepper at
+            // an angle should not shear the bar sideways.
+            directionalLockEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={settle}
+          >
+            {counters.map((counter) => (
+              // The page, not the row: `CounterRow` sizes itself to the space
+              // it is given, and this is what gives it exactly one screen of
+              // it. The steppers inside keep their taps — a scroll view only
+              // claims the gesture once it has travelled sideways, and a tap
+              // never does.
+              <View key={counter.id} style={{ width }}>
+                {draw(counter)}
+              </View>
+            ))}
+          </ScrollView>
+
+          {/* Where the knitter is in their own counters.
+
+              Dots, and the only round marks in the app besides `Badge`'s 5px
+              status dot and the tab pill — this borrows that dot rather than
+              inventing a shape, at the same size, so the exception stays the
+              one exception. They take the hairline values instead of ink
+              because they are chrome about chrome: the number above them is
+              the thing being read, and a page indicator that competes with it
+              has misunderstood which of the two is the pattern. */}
+          <View
+            style={styles.dots}
+            accessible
+            accessibilityLabel={`Counter ${at + 1} of ${count}`}
+          >
+            {counters.map((counter, index) => (
+              <View
+                key={counter.id}
+                style={[
+                  styles.dot,
+                  {
+                    backgroundColor:
+                      index === at ? colors.ink2 : colors.hairlineStrong,
+                  },
+                ]}
+              />
+            ))}
+          </View>
+        </>
+      )}
+    </View>
   );
 }
 
@@ -77,6 +288,31 @@ export default function PatternPdfScreen() {
   const title = readParam(params.name) ?? pdf?.filename ?? "Pattern";
   const directory = useMemo(() => patternPdfDirectoryUri(), []);
 
+  /**
+   * Whose counters these are.
+   *
+   * This route is keyed by a pattern and counters hang off projects, so the
+   * two have to be joined somewhere. Opened from a project that is already
+   * settled — the project rides along in the params — and opened from the
+   * pattern screen it is not, so the mirror is asked which projects were
+   * knitted from this pattern. That is one project nearly always, two for
+   * something somebody has made twice, and none for a pattern nobody has cast
+   * on, which is a bar that never appears rather than a case to handle.
+   */
+  const projectId = readId(params.projectId);
+  const projectIds = useMemo(() => {
+    if (projectId !== null) {
+      return [projectId];
+    }
+    return patternId === null ? [] : getProjectIdsByPatternId(patternId);
+  }, [patternId, projectId]);
+
+  // Live, and on the counters' own store rather than the table's change
+  // events: a stepper tapped here has to move the number under the thumb that
+  // tapped it, not an eighth of a second later. See `row-counters.ts`.
+  const counters = useRowCountersForProjects(projectIds);
+  const counting = useMemo(() => activeCounters(counters), [counters]);
+
   const [problem, setProblem] = useState<string | null>(null);
 
   /** Android only — see the note at the top of the file. */
@@ -91,6 +327,7 @@ export default function PatternPdfScreen() {
       try {
         if (!(await Sharing.isAvailableAsync())) {
           setProblem("No app on this phone can open a PDF.");
+          haptics.error();
           return;
         }
 
@@ -101,6 +338,7 @@ export default function PatternPdfScreen() {
         });
       } catch {
         setProblem("Couldn't open the pattern.");
+        haptics.error();
       }
     })();
   }, [pdf, title]);
@@ -146,7 +384,15 @@ export default function PatternPdfScreen() {
         />
       )}
 
-      {/* Last, so it lands on top of the document rather than under it. */}
+      {/* Last, so both land on top of the document rather than under it.
+
+          The counters are drawn on Android too, over the hand-off rather than
+          over a document — there is no document on this screen there. It is
+          worth the room all the same: the pattern is being read in another app
+          entirely, and this screen is the one the knitter comes back to, so
+          the counters are the only thing on it worth coming back for. Nothing
+          about the bar changes between the two, which is the point. */}
+      {pdf === null ? null : <FloatingCounters counters={counting} />}
       <FloatingBack />
     </SafeAreaView>
   );
@@ -170,6 +416,35 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingLeft: space.s4,
     paddingRight: space.s3,
+  },
+  counters: {
+    // Against the foot of the window, out of the flow, so the document keeps
+    // the full height and its last page runs on underneath — and out of the
+    // flow is why the bottom inset is measured onto this element by hand,
+    // exactly as `back` measures the top one. `left`/`right` at 0 with no
+    // padding is also what makes a pager page the window wide with nothing to
+    // measure; see the note in `FloatingCounters`. The gap is the one between
+    // the counter and the dots under it.
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    gap: space.s2,
+    paddingTop: space.s2,
+    borderTopWidth: 1,
+  },
+  dots: {
+    flexDirection: "row",
+    alignSelf: "center",
+    // The dot's own width, so the run of them reads as a measure rather than
+    // as a dotted line.
+    gap: 5,
+  },
+  dot: {
+    // `Badge`'s status dot exactly. See the note where these are drawn.
+    width: 5,
+    height: 5,
+    borderRadius: radius.pill,
   },
   backLabel: {
     // Stamped, like every other label in the chrome; floating changes where it

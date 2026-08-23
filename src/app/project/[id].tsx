@@ -33,16 +33,56 @@
  * not the place to be offered errands.
  *
  * This screen had no action on it for a long time, which was right while the
- * only things to do here were reading. Finishing changes that: it is the one
- * decision a project screen exists to offer, and it is offered exactly once —
- * a project already marked Finished has no action on it again. It sits directly
- * under the title rather than under the record below it, because the record is
- * now long enough to put the screen's only decision two scrolls down.
+ * only things to do here were reading. Three have arrived since, and they are
+ * deliberately not the same shape.
+ *
+ * Where a project has got to lives behind the status chip itself. The badge
+ * under the title was already the sentence — In progress, Hibernating, Frogged,
+ * Finished — so it is also the way to change it: one chevron on the stamp, a
+ * short menu under it, and three of the four rows write a single field in
+ * place. On iOS that menu is the system's own pull-down, checkmark and all,
+ * because the phone already has a better one of these than this app could draw;
+ * the drawn card is kept for Android, where SwiftUI does not go. Finished is
+ * the fourth row and the exception. It is the one status worth a
+ * screen, because a finish carries a photograph and a date that nothing else
+ * does, so that row opens the modal the filled button used to.
+ *
+ * Every project with an id has that chevron, a finished one included. It did
+ * not use to: the rule was that a done project is offered nothing, and it
+ * outlived the button that first said so. The rule is retired now, deliberately
+ * and at the knitter's asking, because knitters change their minds — a sweater
+ * comes back onto the needles for another inch of sleeve, a status is tapped by
+ * mistake on the bus — and there was no way back out of Finished anywhere in
+ * this app. Finished is a state like the others rather than a door that locks
+ * behind you, and the way out is the same menu that led in: choosing In
+ * progress from a Finished chip is the whole of un-finishing a project.
+ *
+ * "Edit" in the bar is the second, and it sits up in the chrome rather than
+ * down in the record because it is about the record as a whole and not any one
+ * part of it — the name, who the thing was made for, the size it came out at,
+ * and both sets of notes. It is also the only way to a project's delete, which
+ * belongs on a sheet where it can be asked about twice rather than on a screen
+ * somebody is scrolling. See `edit-project`.
+ *
+ * Which leaves "Open pattern", above, as the screen's working button. It is
+ * drawn as one now — a bordered rectangle at full size rather than a line of
+ * link-coloured text — because with the finish gone it is the only thing here
+ * anybody sets out to tap. Bordered and not filled: the filled rectangle is
+ * reserved for the control that commits, and opening a document commits
+ * nothing.
  */
 
+import { Host, Menu, RNHostView, Toggle } from "@expo/ui/swift-ui";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -57,15 +97,22 @@ import { PhotoFrame } from "@/components/ui/photo-frame";
 import { Stamp } from "@/components/ui/stamp";
 import { formatRelative } from "@/components/ui/sync-notice";
 import {
+  adjustRowCounter,
   ensurePatternPhoto,
   ensureProjectDetail,
   getPatternPhoto,
   getStashById,
+  PROJECT_STATUS_FINISHED,
+  PROJECT_STATUSES,
+  setProjectStatus,
   tintFor,
   usePatternPdf,
   useProject,
   useProjectDetail,
+  useRowCounters,
+  type FinishProblem,
 } from "@/data";
+import { CounterRow } from "@/features/counters/rows";
 import {
   projectNeedles,
   projectPhotos,
@@ -76,7 +123,8 @@ import {
 import { ProjectYarnRow } from "@/features/detail/project-rows";
 import { firstString, parseRaw, readId } from "@/features/detail/raw";
 import { hasNotes, RichText } from "@/features/detail/rich-text";
-import { fonts, space, trackSmall, type, useTheme } from "@/theme";
+import { haptics } from "@/haptics";
+import { fonts, radius, space, tap, trackSmall, type, useTheme } from "@/theme";
 
 /**
  * Ravelry's `status_name` for a project that is done.
@@ -88,6 +136,21 @@ import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 function isFinished(status: string | null | undefined): boolean {
   return typeof status === "string" && status.trim().toLowerCase() === "finished";
 }
+
+/**
+ * What to say when a status did not move, in the Finish screen's own words.
+ *
+ * The same three sentences, the same three colours, differing only in the noun
+ * — this is a smaller write than a finish and it fails in exactly the same
+ * three ways, so it should not have invented a second vocabulary for them.
+ */
+const STATUS_NOTICES: Record<FinishProblem, string> = {
+  failed: "Couldn't change the status.",
+  // Aqua, not mustard: nothing went wrong, the request simply never left — and
+  // nothing was written, so the same tap works later.
+  offline: "You're offline · try again later.",
+  signedOut: "Sign in on the Stash tab to change this project's status.",
+};
 
 export default function ProjectScreen() {
   const { colors } = useTheme();
@@ -103,6 +166,12 @@ export default function ProjectScreen() {
   // beat after the screen opens. See the head of this file.
   const row = useProject(id);
   const detail = useProjectDetail(id);
+
+  // The app's own, and live for a third reason again: these are written by the
+  // steppers on this very screen, and `row-counters.ts` wakes them
+  // synchronously so a tap redraws on the next frame rather than an eighth of
+  // a second later. Empty for a project nobody has counted rows on.
+  const counters = useRowCounters(id);
 
   const summary = useMemo(() => parseRaw(row?.raw), [row]);
   const full = useMemo(() => parseRaw(detail?.raw), [detail]);
@@ -233,12 +302,101 @@ export default function ProjectScreen() {
   const status = firstString(raw, [["status_name"]]) ?? row?.status ?? null;
   const finished = isFinished(status);
 
+  /**
+   * The status menu: whether it is down, whether a row is in flight, and what
+   * to say if one did not land.
+   *
+   * All three are the screen's own and none of them outlive it. A knitter who
+   * leaves with the menu open comes back to a chip, which is right — the menu
+   * is a question being asked, not a place.
+   */
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [changing, setChanging] = useState(false);
+  const [statusProblem, setStatusProblem] = useState<FinishProblem | null>(null);
+
+  /**
+   * One row of the menu, pressed.
+   *
+   * Three outcomes and they are genuinely different things. The status the
+   * project is already in is not a write at all, so it closes the menu and says
+   * nothing. Finished opens the modal, because a finish is a photograph and a
+   * date and this row cannot take either. Everything else is the small write:
+   * one field, straight out.
+   *
+   * `setMenuOpen` here only ever governs the drawn card, which is Android's.
+   * On iOS the system's pull-down has already dismissed itself by the time any
+   * of this runs, and the calls below are a no-op on a flag nothing reads.
+   */
+  const choose = useCallback(
+    async (statusId: number) => {
+      if (id === null || changing) {
+        return;
+      }
+
+      if (statusId === PROJECT_STATUS_FINISHED) {
+        setMenuOpen(false);
+        router.push({
+          pathname: "/finish/[projectId]",
+          params: { projectId: id },
+        });
+        return;
+      }
+
+      if (username === null) {
+        // Nothing is attempted: a write with no account behind it fails at the
+        // client, and saying so here costs no round trip.
+        setStatusProblem("signedOut");
+        haptics.error();
+        return;
+      }
+
+      setChanging(true);
+      setStatusProblem(null);
+
+      const outcome = await setProjectStatus(username, id, statusId);
+
+      if (!outcome.ok) {
+        setChanging(false);
+        // The card stays down where there is a card. The tap did not take, and
+        // closing the thing the knitter just used would leave the notice
+        // explaining a control that is no longer on screen. On iOS the notice
+        // is the only thing left standing either way, which is why it was
+        // moved out from under the rows and up under the chip.
+        setStatusProblem(outcome.reason);
+        haptics.error();
+        return;
+      }
+
+      // A second refresh, and not a redundant one. `setProjectStatus` brings
+      // the mirror level, but `project_details` carries its own `status_name`
+      // and this screen reads that one first — without this the chip would keep
+      // saying the old word until the next time the screen was focused.
+      await ensureProjectDetail(username, id);
+
+      haptics.success();
+      setChanging(false);
+      setMenuOpen(false);
+    },
+    [changing, id, username],
+  );
+
   return (
     <SafeAreaView
       edges={["top"]}
       style={[styles.screen, { backgroundColor: colors.paper }]}
     >
-      <BackBar />
+      <BackBar
+        action={row === null ? undefined : "Edit"}
+        onAction={
+          id === null
+            ? undefined
+            : () =>
+                router.push({
+                  pathname: "/edit-project",
+                  params: { id: String(id) },
+                })
+        }
+      />
 
       {row === null ? (
         <Text style={[styles.stamp, { color: colors.ink2 }]}>
@@ -276,12 +434,13 @@ export default function ProjectScreen() {
                 <Pressable
                   accessibilityRole="link"
                   accessibilityLabel={`Pattern: ${source}`}
-                  onPress={() =>
+                  onPress={() => {
+                    haptics.tap();
                     router.push({
                       pathname: "/pattern/[id]",
                       params: { id: patternId },
-                    })
-                  }
+                    });
+                  }}
                   // The line is one 22pt row of body text; the slop restores
                   // the 48pt hit box without a control-sized gap under the
                   // title. It stays ink — the one action on a screen is a
@@ -302,19 +461,282 @@ export default function ProjectScreen() {
               )
             ) : null}
 
-            {/* Directly under the pattern it belongs to, and quiet: the action
-                on this screen is finishing, and opening a document is not a
-                decision. */}
+            {/* Where the project got to and when anybody last touched it are
+                two halves of the same sentence, so they are given one line and
+                its two ends rather than a row each. */}
+            {status || touched !== null ? (
+              <View style={styles.statusRow}>
+                {/* Spruce only for done. It is the system's colour for
+                    committed and complete, and this is the one status that is
+                    either — everything else a project can be is neutral.
+
+                    A finished chip wears the chevron like every other one. The
+                    tone says where the project got to; the chevron says the
+                    knitter is still allowed to change their mind about it, and
+                    a spruce stamp that could not be tapped was this app telling
+                    somebody their sweater was somebody else's now. The
+                    disclosure inherits the tone's own foreground, so the
+                    finished chip is still one colour and not two.
+
+                    The plain badge is left for the one case with nothing to
+                    write to: a screen with no id at all. */}
+                {status ? (
+                  id === null ? (
+                    <Badge tone={finished ? "committed" : "neutral"}>{status}</Badge>
+                  ) : Platform.OS === "ios" ? (
+                    // No `colorScheme` on the Host on purpose: this app's theme
+                    // reads `useColorScheme()` and pins nothing, so SwiftUI is
+                    // already looking at the same switch. Passing one could only
+                    // repeat the system, or contradict it a frame late.
+                    <Host matchContents>
+                      <Menu
+                        label={
+                          <RNHostView matchContents>
+                            <View
+                              accessibilityRole="button"
+                              accessibilityLabel={`Status: ${status}`}
+                              accessibilityHint="Changes this project's status"
+                              // The system owns the tap now, so there is no
+                              // Pressable to hang slop off. The padding is
+                              // handed straight back by the margin instead: the
+                              // chip is the same 26pt stamp on screen and a
+                              // 48pt target to a finger.
+                              style={styles.trigger}
+                            >
+                              <Badge
+                                tone={finished ? "committed" : "neutral"}
+                                disclosure
+                              >
+                                {status}
+                              </Badge>
+                            </View>
+                          </RNHostView>
+                        }
+                      >
+                        {PROJECT_STATUSES.map((entry) => {
+                          const current =
+                            status.trim().toLowerCase() === entry.label.toLowerCase();
+
+                          return (
+                            <Toggle
+                              key={entry.id}
+                              label={entry.label}
+                              // A checkmark, drawn by iOS rather than by us —
+                              // the toggle is on for the one row the project is
+                              // already on, which is how every pull-down on the
+                              // phone says the same thing.
+                              isOn={current}
+                              onIsOnChange={() => {
+                                // The row the project is already on writes
+                                // nothing. The menu closes itself, which is the
+                                // whole of what a tap that confirms should do.
+                                if (!current) {
+                                  void choose(entry.id);
+                                }
+                              }}
+                            />
+                          );
+                        })}
+                      </Menu>
+                    </Host>
+                  ) : (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Status: ${status}`}
+                      accessibilityHint="Changes this project's status"
+                      accessibilityState={{ expanded: menuOpen }}
+                      onPress={() => {
+                        haptics.tap();
+                        if (!menuOpen) {
+                          // A notice explains the last tap, not the next one.
+                          setStatusProblem(null);
+                        }
+                        setMenuOpen(!menuOpen);
+                      }}
+                      // The chip is a 26pt stamp; the slop restores the 48pt
+                      // hit box without drawing a control-sized box around it,
+                      // the same way the pattern link above does.
+                      hitSlop={{ top: 11, bottom: 11, left: 8, right: 8 }}
+                      // The chip already sits on the sunk field, so there is no
+                      // darker ground left to press it into. A dip is the whole
+                      // feedback, and it is the same one the system gives.
+                      style={({ pressed }) => (pressed ? styles.pressed : null)}
+                    >
+                      <Badge tone={finished ? "committed" : "neutral"} disclosure>
+                        {status}
+                      </Badge>
+                    </Pressable>
+                  )
+                ) : null}
+
+                {touched !== null ? (
+                  <Text
+                    style={[styles.touched, styles.statusStamp, { color: colors.ink2 }]}
+                  >
+                    updated {formatRelative(touched)}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+
+            {/* Stamped under the chip, in the Finish screen's words and the
+                Finish screen's colours — see `STATUS_NOTICES`. It lives out
+                here rather than inside the card because on iOS there is no
+                card: the system's menu closes itself the instant a row is
+                tapped, and the answer to that tap has to land somewhere that
+                outlives it. */}
+            {changing ? (
+              <Text style={[styles.notice, { color: colors.ink2 }]}>
+                Changing status…
+              </Text>
+            ) : statusProblem !== null ? (
+              <Text
+                style={[
+                  styles.notice,
+                  {
+                    color:
+                      statusProblem === "offline"
+                        ? colors.aqua
+                        : statusProblem === "failed"
+                          ? colors.mustard
+                          : colors.ink2,
+                  },
+                ]}
+              >
+                {STATUS_NOTICES[statusProblem]}
+              </Text>
+            ) : null}
+
+            {/* Where the project goes next used to be a filled button under
+                the title. It is this now: a chevron on the stamp that already
+                said where the project had got to, and four rows under it.
+
+                Changing a status is a small thing — a project goes into a bag
+                for the winter, or comes out of one, or comes back off the shelf
+                a month after it was called done — and a small thing does not
+                want a control the size of a commitment. Finishing is the one
+                version of it that does, because a finish carries a photograph
+                and a completion date and neither of those fits on a menu row.
+                So Finished is the single row here that opens a screen instead
+                of writing in place, and the modal it opens is the same one the
+                button used to.
+
+                On iOS the menu is the system's own. The chip hangs a real
+                UIMenu off itself, so the rows arrive in the platform's
+                typeface, at the platform's size, with the platform's checkmark
+                against the status the project is already in — the same
+                pull-down every other app on the phone opens, which is a better
+                menu than one drawn by hand could be and is not this app's to
+                style. Everything below is what remains for where SwiftUI does
+                not reach: Android keeps the drawn card, the same four rows in
+                the same order writing the same field.
+
+                Every direction through it is open on both, including back out
+                of Finished — the row for the status the project is already in
+                is the one that writes nothing, and Finished can only be reached
+                from somewhere else, so the modal is never opened over a project
+                that has already been through it.
+
+                A project with no status at all has no chip, and so no way in.
+                That is accepted rather than worked around: a fact that cannot
+                be stated is not drawn, and every row that has ever been synced
+                carries `status_name`. */}
+            {Platform.OS !== "ios" && menuOpen && id !== null ? (
+              <View
+                style={[
+                  styles.menu,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: colors.hairlineStrong,
+                  },
+                ]}
+              >
+                {PROJECT_STATUSES.map((entry, index) => {
+                  const current =
+                    status !== null &&
+                    status.trim().toLowerCase() === entry.label.toLowerCase();
+
+                  return (
+                    <Pressable
+                      key={entry.id}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: current, disabled: changing }}
+                      disabled={changing}
+                      onPress={() => {
+                        haptics.tap();
+
+                        if (current) {
+                          // Already there. The menu closes and nothing is
+                          // written — a tap that confirms is not a change.
+                          setMenuOpen(false);
+                          return;
+                        }
+
+                        void choose(entry.id);
+                      }}
+                      style={({ pressed }) => [
+                        styles.menuRow,
+                        // Counted rather than styled once: the last row's
+                        // hairline would have nothing under it to separate,
+                        // and would double with the card's own bottom edge.
+                        index < PROJECT_STATUSES.length - 1
+                          ? {
+                              borderBottomWidth: 1,
+                              borderBottomColor: colors.hairline,
+                            }
+                          : null,
+                        pressed ? { backgroundColor: colors.surfaceSunk } : null,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.menuLabel,
+                          current
+                            ? { fontFamily: fonts.uiMedium, color: colors.ink }
+                            : { color: colors.ink2 },
+                        ]}
+                      >
+                        {entry.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            {/* Last in the block, and under the status line rather than tucked
+                up against the pattern it names: the lines above are the record
+                saying where the project is and when it moved, and this is the
+                one thing on the screen anybody sets out to do. Drawn as a real
+                control now that nothing else here is one. It was a line of
+                quiet text while the filled Finish button sat below it and every
+                other tappable thing had to stay out of that button's way; with
+                the finish moved into the status menu, this is what somebody
+                actually came to tap on a project they are in the middle of, and
+                it should look like it. Bordered rather than filled all the
+                same — the filled rectangle belongs to the one control on a
+                screen that commits, and opening a document commits nothing. */}
             {pdf !== null && patternId !== null ? (
               <View style={styles.action}>
                 <Button
-                  variant="quiet"
-                  size="sm"
+                  variant="secondary"
+                  size="md"
+                  full
                   accessibilityLabel={`Open the pattern PDF${patternName ? ` for ${patternName}` : ""}`}
                   onPress={() =>
                     router.push({
                       pathname: "/pdf/[patternId]",
-                      params: { patternId, name: patternName ?? "" },
+                      // The project rides along beside the pattern the route is
+                      // keyed by, so the reader can float *this* project's row
+                      // counters over the page rather than working out from a
+                      // pattern id which project the knitter meant. Empty for a
+                      // screen that somehow has no id, which the reader reads
+                      // as none given and falls back from.
+                      params: {
+                        patternId,
+                        name: patternName ?? "",
+                        projectId: id ?? "",
+                      },
                     })
                   }
                 >
@@ -322,48 +744,73 @@ export default function ProjectScreen() {
                 </Button>
               </View>
             ) : null}
-
-            {status ? (
-              <View style={styles.marks}>
-                {/* Spruce only for done. It is the system's colour for
-                    committed and complete, and this is the one status that is
-                    either — everything else a project can be is neutral. */}
-                <Badge tone={finished ? "committed" : "neutral"}>{status}</Badge>
-              </View>
-            ) : null}
-
-            {touched !== null ? (
-              <Text style={[styles.touched, { color: colors.ink2 }]}>
-                updated {formatRelative(touched)}
-              </Text>
-            ) : null}
           </View>
 
-          {/* The one action on this screen: directly under the title, above
-              the whole record, and only while there is still something to
-              decide. It used to sit below everything there was to know about
-              the project, which was fair while that was a badge and a date —
-              the yarn, the needles and the numbers now underneath it would put
-              the screen's only decision two scrolls down. A project that is
-              already finished has nothing left to do here. */}
-          {id !== null && !finished ? (
+          {/* Where the project has got to, and the first thing in the record
+              because it is the only part of it that changes while the knitter
+              is holding the phone. Everything below is what the project *is*;
+              this is what it is in the middle of.
+
+              It is the one section that draws itself empty, and deliberately —
+              silence is right for a fact that cannot be stated, and "no
+              counters yet" is not a fact about the project, it is an offer.
+              So an unfinished project always has the heading and the way to
+              add one, and a finished project keeps whatever counters it ended
+              with and is offered no more — until it is taken back off the
+              shelf, which the status menu above now allows, and it is an
+              unfinished project again with the heading and the offer back.
+
+              The steppers stay quiet, and there is nothing louder on the screen
+              for them to be quiet against — counting is working state rather
+              than a decision, and the one decision here is the status menu up
+              in the title block, which is quieter still. */}
+          {id !== null && (!finished || counters.length > 0) ? (
             <View
-              style={[styles.block, styles.ruled, { borderTopColor: colors.hairline }]}
+              style={[styles.section, styles.ruled, { borderTopColor: colors.hairline }]}
             >
-              <Button
-                variant="primary"
-                size="lg"
-                full
-                accessibilityLabel={`Finish ${name}`}
-                onPress={() =>
-                  router.push({
-                    pathname: "/finish/[projectId]",
-                    params: { projectId: id },
-                  })
-                }
-              >
-                Finish this project
-              </Button>
+              <View style={[styles.counterHead, styles.inset]}>
+                <Text style={[styles.sectionLabel, { color: colors.ink2 }]}>
+                  Row counters
+                </Text>
+                {!finished ? (
+                  <View style={styles.headAction}>
+                    <Button
+                      variant="quiet"
+                      size="sm"
+                      accessibilityLabel={`Add a row counter to ${name}`}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/add-row-counter",
+                          params: { projectId: id },
+                        })
+                      }
+                    >
+                      Add
+                    </Button>
+                  </View>
+                ) : null}
+              </View>
+
+              {/* `ruled` here and on the two sections below: a hairline is a
+                  separator, so it lives only between rows. The last row of
+                  every section ends clean — the next section opens with a rule
+                  of its own, and two lines saying one boundary is one line too
+                  many. The status menu above and the filter sheet already count
+                  their last row out this way; the record now reads the same. */}
+              {counters.map((counter, index) => (
+                <CounterRow
+                  key={counter.id}
+                  counter={counter}
+                  ruled={index < counters.length - 1}
+                  onAdjust={(delta) => adjustRowCounter(counter.id, delta)}
+                  onOpen={() =>
+                    router.push({
+                      pathname: "/edit-row-counter",
+                      params: { id: counter.id },
+                    })
+                  }
+                />
+              ))}
             </View>
           ) : null}
 
@@ -378,7 +825,7 @@ export default function ProjectScreen() {
               <Text style={[styles.sectionLabel, styles.inset, { color: colors.ink2 }]}>
                 Yarn
               </Text>
-              {yarn.map((pack) => (
+              {yarn.map((pack, index) => (
                 <ProjectYarnRow
                   key={pack.key}
                   title={pack.title}
@@ -389,6 +836,7 @@ export default function ProjectScreen() {
                   note={pack.note ?? undefined}
                   photo={pack.photo}
                   tint={pack.tint}
+                  ruled={index < yarn.length - 1}
                 />
               ))}
             </View>
@@ -403,12 +851,13 @@ export default function ProjectScreen() {
               </Text>
               {/* No `onPress`: these are the sizes written on the project, not
                   the drawer — the needle they name may not be in it at all. */}
-              {needles.map((needle) => (
+              {needles.map((needle, index) => (
                 <NeedleRow
                   key={needle.key}
                   size={needle.size}
                   us={needle.us ?? undefined}
                   kind={needle.kind}
+                  ruled={index < needles.length - 1}
                 />
               ))}
             </View>
@@ -502,7 +951,7 @@ export default function ProjectScreen() {
             >
               {username === null ? (
                 <Text style={[styles.source, { color: colors.ink2 }]}>
-                  Sign in on the You tab to see this project&rsquo;s yarn and needles.
+                  Sign in on the Stash tab to see this project&rsquo;s yarn and needles.
                 </Text>
               ) : (
                 <Text style={[styles.touched, { color: colors.aqua }]}>
@@ -550,12 +999,81 @@ const styles = StyleSheet.create({
     // Keeps the pressed row exactly as tall as the plain one.
     minHeight: type.body.lineHeight,
   },
-  action: {
+  /** The chip's own dip while it is held. See the note where it is used. */
+  pressed: { opacity: 0.6 },
+  /**
+   * The status menu where SwiftUI does not reach: a bordered card and nothing
+   * else. iOS hangs the system's own pull-down off the chip and never draws
+   * this.
+   *
+   * No shadow — the system is made of hairlines, and a floating panel would be
+   * the only lifted surface in the app. It stretches to the block rather than
+   * hanging off the chip's width, because four statuses of four different
+   * lengths in a box measured to the shortest of them is a ragged little
+   * object, and the block's edges are already the screen's margins.
+   */
+  menu: {
+    alignSelf: "stretch",
+    marginTop: space.s2,
+    borderWidth: 1,
+    borderRadius: radius.sm,
+  },
+  menuRow: {
+    minHeight: tap.min,
+    paddingHorizontal: space.s3,
+    justifyContent: "center",
+  },
+  menuLabel: {
+    fontFamily: fonts.ui,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+  },
+  /**
+   * Stamped, and set flush.
+   *
+   * It carried an inset of its own while it lived inside the card, measured to
+   * the menu's rows so it would line up under them. It stands in the block now
+   * — under the chip, on every platform, because the system's menu takes
+   * itself away and the answer to a tap cannot go with it — and the block
+   * already holds both edges: its margins set the left, its gap sets the space
+   * above. Padding here would only be the same two measurements counted twice.
+   */
+  notice: {
+    fontFamily: fonts.ui,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    letterSpacing: trackSmall,
+  },
+  /**
+   * The status chip at one end of a line and the "updated" stamp at the other,
+   * centred against each other because a 26pt chip and an 18pt line of text
+   * share nothing else. Deliberately not `marks`: that strip wraps, which is
+   * right for a run of tags and wrong for a pair that belongs on one row.
+   */
+  statusRow: {
     flexDirection: "row",
-    // The `sm` button's own 12pt of padding, pulled back, so its label starts
-    // on the same line as the pattern link above it.
-    marginLeft: -12,
+    alignItems: "center",
     marginTop: 2,
+  },
+  /**
+   * The chip with the system's own menu hanging off it.
+   *
+   * There is no Pressable in that branch to carry `hitSlop`, so the target is
+   * built the other way round: padding the badge does not fill, and a negative
+   * margin that hands the space straight back to the row. 26pt drawn, 48pt to
+   * a finger, and the rhythm above and below it unchanged.
+   */
+  trigger: {
+    paddingVertical: 11,
+    marginVertical: -11,
+  },
+  /**
+   * Four on top of the block's own gap. The lines above are the record's
+   * chrome and this is the one working control under them, and the little
+   * extra air is what says so.
+   */
+  action: {
+    marginTop: 4,
   },
   marks: {
     flexDirection: "row",
@@ -581,12 +1099,40 @@ const styles = StyleSheet.create({
     lineHeight: type.small.lineHeight,
     letterSpacing: trackSmall,
   },
+  /**
+   * Carried to the far end of its row by its own margin rather than by the
+   * row's justification, so it still lands right on a project that has no
+   * status chip to sit opposite. It is also the half that gives way if the two
+   * ever grow long enough to meet.
+   */
+  statusStamp: {
+    marginLeft: "auto",
+    flexShrink: 1,
+  },
   sectionLabel: {
     fontFamily: fonts.ui,
     fontSize: type.small.fontSize,
     lineHeight: type.small.lineHeight,
     letterSpacing: trackSmall,
   },
+  /**
+   * The one section heading with something to do beside it.
+   *
+   * The `sm` button is 40pt tall against an 18pt line of stamped label, so the
+   * negative margin gives back exactly the 22 it added and the heading sits
+   * where every other section heading on this screen sits.
+   */
+  counterHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginVertical: (type.small.lineHeight - 40) / 2,
+  },
+  /**
+   * The `sm` button's own 12pt of padding, pulled back off the right, so its
+   * label ends on the same rule the heading starts on.
+   */
+  headAction: { marginRight: -12 },
   stamp: {
     fontFamily: fonts.ui,
     fontSize: type.small.fontSize,

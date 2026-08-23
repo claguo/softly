@@ -11,6 +11,8 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef } from 'react';
+import { StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AuthProvider, useAuth } from '@/auth/context';
 import { syncAll } from '@/data';
@@ -116,9 +118,22 @@ function RootNavigator() {
         <Stack.Screen name="add-needle" options={{ presentation: 'modal' }} />
         {/* Editing is the same decision as adding, said a second time over a
             thing that already exists, so both take the same card and the same
-            downward throw out of it. */}
+            downward throw out of it. Two of these three are also where a thing
+            is thrown away for good — a project off Ravelry, a skein out of the
+            stash — which is another reason for the card: undoing a sheet is
+            throwing it downward, and the sheet is where the app can still ask
+            whether that is really what was meant. */}
+        <Stack.Screen name="edit-project" options={{ presentation: 'modal' }} />
         <Stack.Screen name="edit-yarn" options={{ presentation: 'modal' }} />
         <Stack.Screen name="edit-needle" options={{ presentation: 'modal' }} />
+        {/* And a row counter, which like the needle drawer is the app's own
+            note about something Ravelry has nowhere to keep. Both halves are a
+            card on the same terms as the sheets above: naming a counter is a
+            decision, and a knitter who opened the sheet mid-row has to be able
+            to throw it downward and land back on the project still counting.
+            The editing one is also where a counter is wound back or binned. */}
+        <Stack.Screen name="add-row-counter" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="edit-row-counter" options={{ presentation: 'modal' }} />
         {/* The other end of casting on, and a card for the same reason: taking
             a photograph of the finished thing is a decision, and a decision
             somebody is allowed to throw away. It dismisses back onto the
@@ -169,11 +184,23 @@ export default function RootLayout() {
 
   // Auth restores from secure store on mount, so it sits inside the font gate:
   // nothing reads it until there is something to render it with.
+  //
+  // The gesture root is outermost and stretched, which is the whole of what
+  // gesture-handler asks for: every handler in the app has to be under one, and
+  // there is only ever one, at the top. The rows on Home, Stash and Saves that
+  // slide aside to show a delete are what needs it — nothing else in this app
+  // has a gesture of its own.
   return (
-    <AuthProvider>
-      <SyncBootstrap />
-      <StatusBar style="auto" />
-      <RootNavigator />
-    </AuthProvider>
+    <GestureHandlerRootView style={styles.root}>
+      <AuthProvider>
+        <SyncBootstrap />
+        <StatusBar style="auto" />
+        <RootNavigator />
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+});

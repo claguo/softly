@@ -164,6 +164,34 @@ export function updateLocalNeedle(id: number, needle: LocalNeedle): NeedleRow | 
   return row;
 }
 
+/**
+ * Throws away one needle this app wrote, and only one this app wrote.
+ *
+ * The same `source` guard as the rewrite above, for the same reason and one
+ * more. Ravelry's needle inventory is read-only, so there is no request that
+ * would make a deletion stick; worse, `pullNeedles` replaces the table from the
+ * account on every sync, so a Ravelry-sourced row taken out here would come
+ * straight back and look like the app had forgotten. The screens only offer the
+ * gesture on rows that are ours — this is the same rule said again where it
+ * cannot be worked around.
+ *
+ * `true` when a needle went, `false` when the id named one that is not ours or
+ * is not there at all. Synchronous, like every other write in this file, and
+ * nothing follows it: `queries.ts` listens to SQLite's own update hook, so the
+ * delete wakes every `useNeedles` on screen by itself.
+ */
+export function deleteLocalNeedle(id: number): boolean {
+  const existing = db.select().from(needles).where(eq(needles.id, id)).get();
+
+  if (!existing || existing.source !== 'local') {
+    return false;
+  }
+
+  db.delete(needles).where(eq(needles.id, id)).run();
+
+  return true;
+}
+
 /** The `added_at` off a local needle's own record, if it is still readable. */
 function readAddedAt(raw: string): number | null {
   try {

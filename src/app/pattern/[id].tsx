@@ -10,18 +10,31 @@
  * it says so in one line rather than a dialog.
  *
  * The action block is a row of two, and the first of them is still the point
- * of the screen: "Start project", filled and twice the width, which only
+ * of the screen: "Start project", filled and half again as wide, which only
  * appears once there is a session to write with and a live pattern to write
  * about — a project needs the craft, and only the live payload carries it.
- * Beside it, "Save", which is the ♥ on the photo said as a control: it
- * bookmarks the pattern on Ravelry, which is what fills the Saves tab.
+ * Beside it, "Save", which is the ♥ on the photo said as a control, and it
+ * goes both ways: it bookmarks the pattern on Ravelry, which is what fills the
+ * Saves tab, and tapped again it takes the bookmark off. The heart on its
+ * label is the mark from the photograph — outline for a pattern that is not
+ * saved, filled for one that is — so the state is on the button twice, in a
+ * word and in a shape, and the tap is the other one.
+ *
+ * Nothing asks first. Un-saving does destroy a Ravelry bookmark, and what it
+ * destroys is one date: the day it was saved, which is most of how the Saves
+ * tab is ordered. Saving again is one tap and puts the pattern back. A
+ * confirmation sheet over something that cheap interrupts more than the
+ * mistake would, so the button spends its warning where it is free — on the
+ * label and the heart, which both say where the pattern stands before the tap
+ * is taken.
  *
  * Save asks for less than Start project — a session and an id, no payload —
  * and the row is drawn on the stricter condition anyway. The only pattern that
- * satisfies the weaker one and not the stronger is a pattern showing from its
- * cached bookmark, and a pattern with a cached bookmark is by definition
- * already saved; a second gate would buy an inert "Saved" on a screen that
- * already has the ♥ up, and nothing else.
+ * satisfies the weaker one and not the stronger is one drawn from its cached
+ * bookmark with no live payload behind it, and that happens exactly when
+ * Ravelry could not be reached — where the one thing this button could do is
+ * fail. The ♥ on the photograph still says the pattern is saved; the row waits
+ * for the payload.
  *
  * Starting a project saves the pattern too. Casting on says everything
  * bookmarking says and more, and a knitter who did the first would have to be
@@ -80,6 +93,7 @@
  * now a label and one link, which is a good deal more use than nothing.
  */
 
+import Feather from "@react-native-vector-icons/feather";
 import { router, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -101,6 +115,7 @@ import {
   deletePatternPdf,
   ensurePatternPdf,
   favoritesCreate,
+  favoritesDelete,
   getFavoriteByPatternId,
   importPatternPdf,
   patternShow,
@@ -129,6 +144,7 @@ import { hasNotes, RichText } from "@/features/detail/rich-text";
 // The three words every write in this app answers to, stated once beside Cast
 // on and borrowed here for the fourth: a bookmark fails the same three ways.
 import { triage, type Problem } from "@/features/start-project/problem";
+import { haptics } from "@/haptics";
 import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 type PatternState = {
@@ -161,7 +177,7 @@ const PDF_NOTICES: Record<PdfProblem, string> = {
   externalDownload: "PDF lives on the designer's site.",
   // Aqua, not mustard: nothing went wrong, the request simply never left.
   offline: "You're offline · try again later.",
-  signedOut: "Sign in on the You tab to download.",
+  signedOut: "Sign in on the Stash tab to download.",
   failed: "Couldn't download the pattern.",
 };
 
@@ -179,21 +195,50 @@ const IMPORT_NOTICES: Record<ImportProblem, string> = {
   failed: "Couldn't import that file.",
 };
 
+/** Which way the Save button was going. */
+type SaveAction = "save" | "unsave";
+
 /**
- * One quiet line per way a save can not happen.
+ * A write on the bookmark that did not happen, and which way it was going.
+ *
+ * The direction is kept rather than read back off `saved` afterwards. It could
+ * be read back — a failure changes nothing, so the row is still on whichever
+ * side it was tapped from — but that ties the sentence to a value the write is
+ * allowed to move, and a line reporting the opposite of what was attempted is
+ * exactly what the pair rules out.
+ */
+type SaveTrouble = {
+  readonly action: SaveAction;
+  readonly problem: Problem;
+};
+
+/**
+ * One quiet line per way a save can not happen, and one per way an un-save
+ * can not happen.
  *
  * The same three words every write in this app answers to, and the same
  * colours as the block below: aqua for a request that never left, mustard for
  * one that did and came back wrong. Never red — nothing here is dangerous, and
  * a bookmark that did not take is worth a sentence, not an alarm.
  *
+ * Two maps rather than one with the verb slotted in: "couldn't save this
+ * pattern" under a tap that was trying to remove one is the block reporting
+ * the opposite of what happened, and the offline line is the only one of the
+ * six that reads the same in both directions anyway.
+ *
  * `signedOut` is drawn even though the button needs a session to appear at
  * all: the token can be refused between the frame that drew it and the tap.
  */
 const SAVE_NOTICES: Record<Problem, string> = {
   offline: "You're offline · try again later.",
-  signedOut: "Sign in on the You tab to save.",
+  signedOut: "Sign in on the Stash tab to save.",
   failed: "Couldn't save this pattern.",
+};
+
+const UNSAVE_NOTICES: Record<Problem, string> = {
+  offline: "You're offline · try again later.",
+  signedOut: "Sign in on the Stash tab to change your saves.",
+  failed: "Couldn't remove this pattern from your saves.",
 };
 
 /**
@@ -242,6 +287,53 @@ function heroPhoto(pattern: RavelryPatternDetail): string | undefined {
   }
 
   return undefined;
+}
+
+/**
+ * The same list read the other way round, smallest usable file first. The hero
+ * asks for the biggest thing Ravelry has because it is drawn the width of the
+ * screen; the strip below it is 96pt squares, so a square crop is the right
+ * file to ask for and a screen-wide JPEG is only a slower way to draw one. The
+ * keys are `projectPhotos`', for the identical strip on the project screen.
+ */
+const STRIP_KEYS = [
+  ["square_url"],
+  ["small_url"],
+  ["small2_url"],
+  ["medium_url"],
+] as const;
+
+/**
+ * Every photograph on the pattern, in Ravelry's own order.
+ *
+ * `photos` is the whole array and it is already in memory — the detail payload
+ * has carried it all along, and this screen was drawing one frame out of it.
+ * Only that field is read: on `/patterns/{id}.json` `first_photo` comes back
+ * null, and the hero already covers the reverse case for the one frame it
+ * draws.
+ *
+ * A photo with none of the four keys on it is dropped rather than stood in
+ * for. The frame's striped placeholder means "no picture yet", which is a
+ * sentence about a pattern, not about a file Ravelry declined to size.
+ */
+function stripPhotos(pattern: RavelryPatternDetail): string[] {
+  const photos = pattern.photos;
+
+  if (!Array.isArray(photos)) {
+    return [];
+  }
+
+  const urls: string[] = [];
+
+  for (const photo of photos) {
+    const url = firstString(photo, STRIP_KEYS);
+
+    if (url !== null) {
+      urls.push(url);
+    }
+  }
+
+  return urls;
 }
 
 /** http(s) only, trimmed, and null for the empty string Ravelry sends a lot of. */
@@ -358,22 +450,43 @@ export default function PatternScreen() {
     null,
   );
 
-  // The bookmark's own three, kept apart from both of the above for the same
-  // reason they are kept apart from each other: a save has nothing to do with
-  // a PDF, and one failure must never be drawn under the other's button.
-  const [saving, setSaving] = useState(false);
-  const [saveProblem, setSaveProblem] = useState<Problem | null>(null);
+  // The bookmark's own, kept apart from both of the above for the same reason
+  // they are kept apart from each other: a save has nothing to do with a PDF,
+  // and one failure must never be drawn under the other's button. `saving`
+  // carries the direction as well as the fact, because the two directions have
+  // different lines to draw under them.
+  const [saving, setSaving] = useState<SaveAction | null>(null);
+  const [saveTrouble, setSaveTrouble] = useState<SaveTrouble | null>(null);
   /**
-   * The bookmark this screen made itself.
+   * What this screen has done to the bookmark since it opened, if anything.
    *
    * `cached` is read once, synchronously, when the screen opens, and a write
    * that lands under it cannot make it read again — so without this the ♥
-   * would wait for a remount to appear, which is a sync at best and a relaunch
-   * at worst. Set the moment the POST answers rather than after the refresh
-   * below it: the bookmark exists on Ravelry at that point, and the mirror
-   * catching up is housekeeping the knitter should not have to watch.
+   * would wait for a remount to catch up, which is a sync at best and a
+   * relaunch at worst. Null is the ordinary state and deferring is what it
+   * means: believe the row and the payload. True and false are this screen's
+   * own answer, and they outrank both.
+   *
+   * Set the moment Ravelry answers — not before it, which would be a claim the
+   * button might have to take back, and not after the refresh under it, which
+   * would make the knitter watch the mirror catch up with something already
+   * done.
    */
-  const [savedNow, setSavedNow] = useState(false);
+  const [savedOverride, setSavedOverride] = useState<boolean | null>(null);
+  /**
+   * The bookmark's own id, which is what un-saving is keyed by.
+   *
+   * Not the pattern's — see `favoritesDelete`, and the long note above
+   * `favoritesCreate` for how the two got told apart. Three places have this
+   * number and they are reached for in this order: the cached row, whose `id`
+   * column is the bookmark's, which is why the state starts there; the answer
+   * to a `favoritesCreate` made on this screen, which is the only source for a
+   * pattern saved here for the first time; and failing both, a refresh and a
+   * second look at the mirror, which `unbookmark` does for itself.
+   */
+  const [bookmarkId, setBookmarkId] = useState<number | null>(
+    cached?.id ?? null,
+  );
 
   useEffect(() => {
     // A route with no usable id asks Ravelry nothing; see `settled` below.
@@ -479,10 +592,13 @@ export default function PatternScreen() {
         setBusy(null);
 
         if (outcome.ok) {
+          // The file is on the phone, which is the whole point of the block.
+          haptics.success();
           return;
         }
 
         setProblem(outcome.reason);
+        haptics.error();
 
         // The library said something the probe did not. Believe the library.
         if (outcome.reason === "notInLibrary") {
@@ -520,10 +636,11 @@ export default function PatternScreen() {
 
       if (picked.kind !== "picked") {
         setImporting(false);
-        // A picker that would not open is the one thing here worth a line;
-        // a knitter who changed their mind is not.
+        // A picker that would not open is the one thing here worth a line —
+        // and worth a buzz; a knitter who changed their mind is neither.
         if (picked.kind === "unavailable") {
           setImportProblem("failed");
+          haptics.error();
         }
         return;
       }
@@ -533,8 +650,10 @@ export default function PatternScreen() {
 
       if (outcome.ok) {
         setProblem(null);
+        haptics.success();
       } else {
         setImportProblem(outcome.reason);
+        haptics.error();
       }
     })();
   }, [id, importing]);
@@ -547,6 +666,9 @@ export default function PatternScreen() {
     const imported = pdf?.source === "imported";
 
     deletePatternPdf(id);
+    // Nothing asked first, and an imported copy is one only the knitter can
+    // replace — so the file going is said once, after it has gone.
+    haptics.warning();
     setProblem(null);
     setImportProblem(null);
     // A downloaded copy was proof of ownership, and removing it changes only
@@ -577,13 +699,22 @@ export default function PatternScreen() {
     (pattern === null ? undefined : heroPhoto(pattern)) ??
     cached?.photoUrl ??
     undefined;
+  // The live payload only. A cached bookmark keeps one photograph — the one
+  // already in the frame above — so a pattern drawn from it has nothing extra
+  // to show and the strip stays away, which is the same answer as a pattern
+  // with a single photo.
+  const photos = useMemo(
+    () => (pattern === null ? [] : stripPhotos(pattern)),
+    [pattern],
+  );
   const free = pattern === null ? cached?.free === true : pattern.free === true;
 
-  // A bookmark row on the device is proof on its own; `personal_attributes`
-  // is the answer for a pattern that was never synced into Saves; and
-  // `savedNow` is the one this screen has just made, which neither of the
-  // other two can know about yet.
-  const saved = cached !== null || savedNow || isTrue(attributes, SAVED_KEYS);
+  // Three answers, and this screen's own comes first: a bookmark row on the
+  // device is proof on its own and `personal_attributes` is the answer for a
+  // pattern that was never synced into Saves, but both were read before the
+  // button was tapped, and only one of the three can be newer than the frame.
+  const saved =
+    savedOverride ?? (cached !== null || isTrue(attributes, SAVED_KEYS));
   const inLibrary = isTrue(attributes, LIBRARY_KEYS);
   const queued = isTrue(attributes, QUEUED_KEYS);
 
@@ -622,6 +753,12 @@ export default function PatternScreen() {
    * this throws whatever the call threw and leaves that decision upstairs. One
    * has a line to draw under a button; the other has already left the screen.
    *
+   * The new bookmark's id is kept on the way past, because the button that
+   * made it is the button that takes it away and a delete is keyed by that id
+   * rather than by the pattern. Null is an ordinary answer from
+   * `favoritesCreate` and not a failure — `unbookmark` knows another road to
+   * the same number.
+   *
    * The refresh is awaited and its outcome ignored, the same bargain
    * `finishProject` strikes: the Saves tab reads the mirror rather than the
    * network, so the row has to be written there — but `refreshFavorites`
@@ -629,37 +766,87 @@ export default function PatternScreen() {
    * un-bookmarked nothing. The next full sync carries it.
    */
   const bookmark = useCallback(async (who: string, patternId: number) => {
-    await favoritesCreate(who, patternId);
-    setSavedNow(true);
+    const created = await favoritesCreate(who, patternId);
+    setBookmarkId(created);
+    setSavedOverride(true);
     await refreshFavorites(who);
   }, []);
 
   /**
-   * The Save button.
+   * The other direction, and the reason the id is worth keeping.
    *
-   * Refuses a second attempt while one is in flight and refuses one entirely
-   * on a pattern that is already saved — this button does not un-save, and a
-   * duplicate bookmark is not something to find out about from Ravelry. Every
-   * attempt starts clean, so the last failure clears on retry.
+   * Ravelry keys this by the bookmark rather than by the pattern, so the one
+   * thing it needs is a number that need not be anywhere on the screen: a
+   * pattern can read as saved from `personal_attributes` alone — bookmarked on
+   * the website, never synced into this mirror, never saved from here — and
+   * that payload carries the pattern's id and nothing at all about the
+   * bookmark's. So the mirror is filled and asked a second time, which is a
+   * round trip the two common cases never make. A row that still is not there
+   * leaves no honest delete to send, and this throws to the same place a
+   * refused one would land: `failed`, under the button, in one line.
+   *
+   * The refresh underneath is the create's bargain in reverse and struck for
+   * the same reason. The bookmark is gone from Ravelry the moment the DELETE
+   * answers; the Saves tab reads the mirror, so the row has to go from there
+   * too, and a refresh that could not land has un-deleted nothing.
+   */
+  const unbookmark = useCallback(
+    async (who: string, patternId: number) => {
+      let mark = bookmarkId;
+
+      if (mark === null) {
+        // Reports through its answer rather than throwing, and what matters
+        // here is only whether the row arrived — which the next line asks.
+        await refreshFavorites(who);
+        mark = getFavoriteByPatternId(patternId)?.id ?? null;
+      }
+
+      if (mark === null) {
+        throw new Error(`No bookmark id for pattern ${patternId}.`);
+      }
+
+      await favoritesDelete(who, mark);
+      setBookmarkId(null);
+      setSavedOverride(false);
+      await refreshFavorites(who);
+    },
+    [bookmarkId],
+  );
+
+  /**
+   * The Save button, which goes both ways.
+   *
+   * Which way is worked out here rather than split across two controls,
+   * because there is only ever one thing to ask of a bookmark: the one it is
+   * not. A second attempt is refused while one is in flight — until the write
+   * answers, `saved` is still the old answer, and a tap that read it would
+   * send the same write twice. Every attempt starts clean, so the last failure
+   * clears on retry.
    */
   const save = useCallback(() => {
-    if (id === null || username === null || saving || saved) {
+    if (id === null || username === null || saving !== null) {
       return;
     }
 
-    setSaving(true);
-    setSaveProblem(null);
+    const action: SaveAction = saved ? "unsave" : "save";
+
+    setSaving(action);
+    setSaveTrouble(null);
 
     void (async () => {
       try {
-        await bookmark(username, id);
+        await (action === "unsave"
+          ? unbookmark(username, id)
+          : bookmark(username, id));
+        haptics.success();
       } catch (error) {
-        setSaveProblem(triage(error));
+        setSaveTrouble({ action, problem: triage(error) });
+        haptics.error();
       } finally {
-        setSaving(false);
+        setSaving(null);
       }
     })();
-  }, [bookmark, id, saved, saving, username]);
+  }, [bookmark, id, saved, saving, unbookmark, username]);
 
   /**
    * Start project, which saves on the way past.
@@ -931,11 +1118,14 @@ export default function PatternScreen() {
         >
           <View style={[styles.photo, { borderBottomColor: colors.hairline }]}>
             <PhotoFrame src={photo} label="pattern photo" aspect="4/5" />
+            {/* The same mark the grid cards wear, at the same 14 in the same
+                26pt chip: ink rather than a colour, because a save is a flag
+                the knitter set and not one of the three states the palette is
+                reserved for. Feather draws it as an outline where the
+                character was filled. */}
             {saved ? (
               <View style={[styles.saved, { backgroundColor: colors.surface }]}>
-                <Text style={[styles.savedGlyph, { color: colors.ink }]}>
-                  ♥
-                </Text>
+                <Feather name="heart" size={14} color={colors.ink} />
               </View>
             ) : null}
           </View>
@@ -993,8 +1183,9 @@ export default function PatternScreen() {
               only pattern that satisfies that and not `canStart` is one drawn
               without a live payload, and this screen only draws one of those
               when it has a cached bookmark to draw it from — which is to say,
-              when it is already saved. A second gate would buy an inert
-              "Saved" under a ♥ that is already up, and nothing else. */}
+              when Ravelry could not be reached. A second gate would buy a
+              button whose every tap comes back "you're offline", under a ♥
+              that is already saying the true thing. */}
           {canStart ? (
             <View
               style={[
@@ -1006,8 +1197,9 @@ export default function PatternScreen() {
               {/* One band, two widths. Both controls are `lg`, because two
                   rectangles on different baselines would read as a mistake
                   rather than a hierarchy — the weight is carried by the fill
-                  and by the two-to-one split instead, which is what makes this
-                  an action with a companion rather than a choice of two. */}
+                  and by the three-to-two split instead, which is what makes
+                  this an action with a companion rather than a choice of
+                  two. */}
               <View style={styles.actionRow}>
                 <View style={styles.startSlot}>
                   <Button
@@ -1021,19 +1213,38 @@ export default function PatternScreen() {
                   </Button>
                 </View>
 
-                {/* Inert rather than absent once it is saved: the row keeps its
-                    shape, and "Saved" answers the question the button raises.
-                    It is not a toggle — un-saving destroys a Ravelry bookmark,
-                    and nothing on this screen should do that by being tapped
-                    twice. */}
+                {/* One control for both directions. The row keeps its shape,
+                    "Saved" answers the question the button raises, and the tap
+                    that answers it is the one that takes it back — which is
+                    what a knitter reaches for after tapping the wrong pattern,
+                    and what they would otherwise have to find in the Saves tab
+                    instead. The label and the heart together are the whole
+                    warning: what the button says is the state now, and the
+                    other state is what the tap buys. */}
                 <View style={styles.saveSlot}>
                   <Button
                     variant="secondary"
                     size="lg"
                     full
-                    disabled={saved || saving}
+                    disabled={saving !== null}
+                    leading={
+                      // Feather has no filled heart — the grid cells make the
+                      // same discovery — so the outline is the icon and the
+                      // fill is the character. Ink either way, like the ♥ on
+                      // the photograph: a save is a flag the knitter set, not
+                      // one of the three states the palette is kept for.
+                      saved ? (
+                        <Text style={[styles.heart, { color: colors.ink }]}>
+                          ♥
+                        </Text>
+                      ) : (
+                        <Feather name="heart" size={15} color={colors.ink} />
+                      )
+                    }
                     accessibilityLabel={
-                      saved ? `${name} is saved` : `Save ${name} to your saves`
+                      saved
+                        ? `Remove ${name} from your saves`
+                        : `Save ${name} to your saves`
                     }
                     onPress={save}
                   >
@@ -1043,26 +1254,35 @@ export default function PatternScreen() {
               </View>
 
               {/* The busy line only while there is nothing better to say: the
-                  moment the write lands the button reads "Saved", and leaving
-                  "Saving…" under it through the refresh would be the block
-                  arguing with itself about something already done. */}
-              {saving && !saved ? (
+                  moment the write lands the button reads the other word, and
+                  leaving "Saving…" under it through the refresh would be the
+                  block arguing with itself about something already done. Which
+                  is why each line is drawn on its own direction *and* on the
+                  row not having turned yet — the flag outlives the answer by
+                  one refresh, and `saved` is what says the answer came. */}
+              {saving === "save" && !saved ? (
                 <Text style={[styles.notice, { color: colors.ink2 }]}>
                   Saving…
                 </Text>
-              ) : saveProblem !== null ? (
+              ) : saving === "unsave" && saved ? (
+                <Text style={[styles.notice, { color: colors.ink2 }]}>
+                  Removing…
+                </Text>
+              ) : saveTrouble !== null ? (
                 <Text
                   style={[
                     styles.notice,
                     {
                       color:
-                        saveProblem === "offline"
+                        saveTrouble.problem === "offline"
                           ? colors.aqua
                           : colors.mustard,
                     },
                   ]}
                 >
-                  {SAVE_NOTICES[saveProblem]}
+                  {saveTrouble.action === "save"
+                    ? SAVE_NOTICES[saveTrouble.problem]
+                    : UNSAVE_NOTICES[saveTrouble.problem]}
                 </Text>
               ) : null}
             </View>
@@ -1288,6 +1508,50 @@ export default function PatternScreen() {
             </View>
           ) : null}
 
+          {/* Where the project screen puts it, for the same reason: last of the
+              things to look at, ahead of the thing to read. A pattern's
+              photographs are the rest of the frame at the top of the screen —
+              the other angles, the other colourways, the flat lay of the
+              chart — and they belong after the facts and the controls, which
+              are what a knitter came down the screen for. */}
+          {photos.length > 1 ? (
+            <View
+              style={[
+                styles.section,
+                styles.ruled,
+                { borderTopColor: colors.hairline },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.sectionLabel,
+                  styles.inset,
+                  { color: colors.ink2 },
+                ]}
+              >
+                Photos
+              </Text>
+              {/* The first of these is already the frame at the top of the
+                  screen. It stays in the strip anyway: a gallery that silently
+                  drops its first picture reads as a missing one. */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.strip}
+              >
+                {photos.map((url) => (
+                  <PhotoFrame
+                    key={url}
+                    src={url}
+                    label="pattern photo"
+                    width={96}
+                    aspect="1/1"
+                  />
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+
           {hasNotes(notesHtml, notesMarkdown) ? (
             <View
               style={[
@@ -1320,15 +1584,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  savedGlyph: {
-    fontFamily: fonts.ui,
-    fontSize: 13,
-    lineHeight: 16,
-  },
   block: {
     paddingHorizontal: space.s4,
     paddingVertical: space.s5,
     gap: space.s2,
+  },
+  /**
+   * A block whose contents draw their own edges. The photo strip scrolls, and
+   * a scroll view that stops 16pt short of the screen looks like it has run
+   * out rather than run on — so the padding moves off the block and onto the
+   * heading and the strip's own contents, and the last thumbnail can slide all
+   * the way to the edge. Same pair as the project screen's.
+   */
+  section: {
+    paddingVertical: space.s5,
+    gap: space.s2,
+  },
+  inset: { paddingHorizontal: space.s4 },
+  strip: {
+    flexDirection: "row",
+    gap: space.s2,
+    paddingHorizontal: space.s4,
   },
   ruled: { borderTopWidth: 1 },
   title: {
@@ -1367,24 +1643,54 @@ const styles = StyleSheet.create({
    * can put the two of them on different baselines.
    *
    * The row must never wrap or truncate, and `lg`'s 24pt of padding a side is
-   * tuned for a button that owns the screen's width rather than a third of it,
-   * so the narrow slot is the one worth checking. At the narrowest width this
-   * app runs at — 360dp on Android, 375pt on the smallest supported iPhone —
-   * the block's 16pt margins and the 8pt gap leave the save slot 106pt, which
-   * is about 58pt of label after the padding. "Saved" is five characters of
-   * 17pt Solway Medium, near 47. It fits, and it is the tightest thing here;
-   * anything longer in that slot wants the split widened before the label is.
+   * tuned for a button that owns the screen's width rather than a share of it,
+   * so the narrow slot is the one worth checking — and it carries a glyph as
+   * well as a word, which is what the split is set by.
+   *
+   * At the narrowest width this app runs at — 360dp on Android, 375pt on the
+   * smallest supported iPhone — the block's 16pt margins leave 328, and the
+   * 8pt gap leaves 320 to divide. Three to two is 192 and 128; take `lg`'s
+   * 48pt of padding off each and the contents have 144 and 80.
+   *
+   * "Start project" is thirteen characters of 17pt Solway Medium, near 123 in
+   * 144. "Saved" is five of the same, near 47, and in front of it sits a heart
+   * — 15 at its widest, which is the icon's full em — with the button's own
+   * 8pt gap between them: 70 in 80. Both fit at the narrowest width with room
+   * over, and the save slot is still the tight one; anything longer in there
+   * wants the split widened before the label is.
    */
   actionRow: {
     flexDirection: "row",
     alignItems: "stretch",
     gap: space.s2,
   },
-  // Two thirds against one. The split is the hierarchy: `full` inside each
-  // slot fills the share flex gave it, so the primary stays the wide one at
-  // every width without a single hardcoded number.
-  startSlot: { flex: 2 },
+  // Three against two. The split is the hierarchy: `full` inside each slot
+  // fills the share flex gave it, so the primary stays the wide one at every
+  // width without a single hardcoded number. Half again rather than double,
+  // because at two to one the save slot's 106 leaves 58 for contents that come
+  // to 70, and the primary's spare width is the only place the difference can
+  // come from. It is still, plainly, the wide one.
+  startSlot: { flex: 1.5 },
   saveSlot: { flex: 1 },
+  /**
+   * The filled half of the Save button's mark.
+   *
+   * Feather ships an outline heart and no filled one, so the fill is the ♥
+   * character — the same one `notes.ts` puts on screen for `&hearts;`, and the
+   * same division the grid cells settle. Solway has no ♥ in it, so no
+   * `fontFamily` is asked for: the system face draws it, which is what would
+   * happen anyway, and naming a font that lacks the glyph only obscures that.
+   *
+   * 16 against Feather's 15 because the two are measured differently. An icon
+   * glyph fills its em box; a text one leaves room above and below for a
+   * font's ascent and descent, so the same number draws the smaller heart. The
+   * line box is the label's 22, which makes the two boxes the same height and
+   * lets the row centre them together.
+   */
+  heart: {
+    fontSize: 16,
+    lineHeight: 22,
+  },
   actions: {
     flexDirection: "row",
     flexWrap: "wrap",

@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ReactNode } from 'react';
 
+import { haptics } from '@/haptics';
 import { radius, fonts, tap, type, useTheme } from '@/theme';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'ghost';
@@ -16,6 +17,8 @@ export type ButtonProps = {
   full?: boolean;
   disabled?: boolean;
   onPress?: () => void;
+  /** Small leading glyph, e.g. a heart. */
+  leading?: ReactNode;
   /** Small trailing glyph, e.g. an arrow. */
   trailing?: ReactNode;
   accessibilityLabel?: string;
@@ -41,6 +44,7 @@ export function Button({
   full = false,
   disabled = false,
   onPress,
+  leading,
   trailing,
   accessibilityLabel,
 }: ButtonProps) {
@@ -83,7 +87,11 @@ export function Button({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
       disabled={disabled}
-      onPress={onPress}
+      onPress={() => {
+        if (variant === 'primary') haptics.commit();
+        else haptics.tap();
+        onPress?.();
+      }}
       // `sm` is 40pt by the handoff — the slop restores the 48pt hit box the
       // art direction demands without inflating the drawn button.
       hitSlop={size === 'sm' ? { top: 4, bottom: 4 } : undefined}
@@ -98,6 +106,7 @@ export function Button({
         full ? styles.full : styles.inline,
         disabled && styles.disabled,
       ]}>
+      {leading ? <View style={styles.leading}>{leading}</View> : null}
       <Text
         numberOfLines={1}
         style={[styles.label, { color: fg, fontSize: metrics.fontSize, lineHeight: metrics.lineHeight }]}>
@@ -130,6 +139,9 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: fonts.uiSemiBold,
     letterSpacing: 0.08,
+  },
+  leading: {
+    opacity: 0.8,
   },
   trailing: {
     opacity: 0.8,

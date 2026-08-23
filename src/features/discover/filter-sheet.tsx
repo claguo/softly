@@ -84,6 +84,7 @@ import {
   type Range,
   type RangeKey,
 } from '@/features/discover/filter-state';
+import { haptics } from '@/haptics';
 import { fonts, space, tap, trackSmall, type, useTheme } from '@/theme';
 
 export type FilterSheetProps = {
@@ -234,7 +235,10 @@ function Section({
         accessibilityRole="button"
         accessibilityState={{ expanded }}
         accessibilityLabel={value === undefined ? label : `${label}, ${value}`}
-        onPress={onToggle}
+        onPress={() => {
+          haptics.tap();
+          onToggle();
+        }}
         style={({ pressed }) => [
           styles.sectionHeader,
           {
@@ -380,7 +384,10 @@ function CategoryRows({
                 accessibilityRole="button"
                 accessibilityState={{ selected: isSelected }}
                 accessibilityLabel={node.label}
-                onPress={() => onSelect(node.permalink)}
+                onPress={() => {
+                  haptics.tap();
+                  onSelect(node.permalink);
+                }}
                 style={({ pressed }) => [
                   styles.rowBody,
                   {
@@ -404,7 +411,10 @@ function CategoryRows({
                   accessibilityRole="button"
                   accessibilityState={{ expanded: isOpen }}
                   accessibilityLabel={`${node.label}, subcategories`}
-                  onPress={() => onOpen(node.permalink)}
+                  onPress={() => {
+                    haptics.tap();
+                    onOpen(node.permalink);
+                  }}
                   style={({ pressed }) => [
                     styles.rowDisclosure,
                     { backgroundColor: pressed ? colors.surfaceSunk : colors.surface },
@@ -540,7 +550,10 @@ export function FilterSheet({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Clear all filters"
-                onPress={clearAll}
+                onPress={() => {
+                  haptics.tap();
+                  clearAll();
+                }}
                 style={styles.headerAction}>
                 {({ pressed }) => (
                   <Text
@@ -557,7 +570,10 @@ export function FilterSheet({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Close"
-              onPress={onClose}
+              onPress={() => {
+                haptics.tap();
+                onClose();
+              }}
               style={styles.headerAction}>
               {({ pressed }) => (
                 <Text style={[styles.close, { color: pressed ? colors.ink : colors.ink2 }]}>

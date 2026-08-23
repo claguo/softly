@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { haptics } from "@/haptics";
 import { fonts, space, tap, trackSmall, type, useTheme } from "@/theme";
 
 export type BackBarProps = {
@@ -47,7 +48,10 @@ export function BackBar({ title, action, onAction }: BackBarProps) {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Back"
-        onPress={() => router.back()}
+        onPress={() => {
+          haptics.tap();
+          router.back();
+        }}
         style={styles.back}
       >
         {({ pressed }) => (
@@ -77,7 +81,10 @@ export function BackBar({ title, action, onAction }: BackBarProps) {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={action}
-            onPress={onAction}
+            onPress={() => {
+              haptics.tap();
+              onAction?.();
+            }}
             style={styles.action}
           >
             {({ pressed }) => (

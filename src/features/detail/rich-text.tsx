@@ -40,6 +40,7 @@ import type { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { parseNotes, type NoteBlock, type NoteRun } from "@/features/detail/notes";
+import { haptics } from "@/haptics";
 import { fonts, space, type, useTheme, type Palette } from "@/theme";
 
 export { hasNotes } from "@/features/detail/notes";
@@ -102,7 +103,10 @@ function runNodes(runs: readonly NoteRun[], colors: Palette, base: string): Reac
         key={index}
         accessibilityRole="link"
         accessibilityHint="Opens in a browser"
-        onPress={() => open(href)}
+        onPress={() => {
+          haptics.tap();
+          open(href);
+        }}
         style={[face, styles.link, { color: colors.link }]}
       >
         {run.text}

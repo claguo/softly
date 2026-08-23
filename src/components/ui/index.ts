@@ -24,6 +24,7 @@ export {
   type PhotoFrameProps
 } from "@/components/ui/photo-frame";
 export { Stamp, type StampProps, type StampTone } from "@/components/ui/stamp";
+export { SwipeRow, type SwipeRowProps } from "@/components/ui/swipe-row";
 export { Switch, type SwitchProps } from "@/components/ui/app-switch";
 export { TextField, type TextFieldProps } from "@/components/ui/text-field";
 export { formatRelative, type SyncState } from "@/components/ui/sync-notice";

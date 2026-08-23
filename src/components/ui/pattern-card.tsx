@@ -1,7 +1,9 @@
+import Feather from "@react-native-vector-icons/feather";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Badge } from "@/components/ui/badge";
 import { PhotoFrame } from "@/components/ui/photo-frame";
+import { haptics } from "@/haptics";
 import { fonts, space, trackSmall, type, useTheme } from "@/theme";
 
 /** grid = 2-up photo-forward results; list = compact rows in Saves. */
@@ -38,6 +40,13 @@ export function PatternCard({
 }: PatternCardProps) {
   const { colors } = useTheme();
 
+  const press = onPress
+    ? () => {
+        haptics.tap();
+        onPress();
+      }
+    : undefined;
+
   const marks =
     inLibrary || offline || price ? (
       <View style={styles.marks}>
@@ -62,7 +71,7 @@ export function PatternCard({
       <Pressable
         accessibilityRole={onPress ? "button" : undefined}
         accessibilityLabel={designer ? `${name}, ${designer}` : name}
-        onPress={onPress}
+        onPress={press}
         style={({ pressed }) => [
           styles.list,
           { borderColor: colors.hairline },
@@ -88,17 +97,20 @@ export function PatternCard({
     <Pressable
       accessibilityRole={onPress ? "button" : undefined}
       accessibilityLabel={designer ? `${name}, ${designer}` : name}
-      onPress={onPress}
+      onPress={press}
       style={styles.grid}
     >
       <View>
         <PhotoFrame src={photo} label="pattern photo" aspect="4/5" />
         {/* Ink, not a colour: saving is something the knitter did, not one of
-            the three states the palette is reserved for. The glyph is already
-            the only heart on the screen, so shape carries it. */}
+            the three states the palette is reserved for. The mark is already
+            the only heart on the screen, so shape carries it. Feather draws it
+            as an outline where the character was filled; 14 holds it to about
+            the measure the 13pt glyph set, and leaves the 26pt chip a margin
+            on every side. */}
         {saved ? (
           <View style={[styles.saved, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.savedGlyph, { color: colors.ink }]}>♥</Text>
+            <Feather name="heart" size={14} color={colors.ink} />
           </View>
         ) : null}
       </View>
@@ -175,10 +187,5 @@ const styles = StyleSheet.create({
     height: 26,
     alignItems: "center",
     justifyContent: "center",
-  },
-  savedGlyph: {
-    fontFamily: fonts.ui,
-    fontSize: 13,
-    lineHeight: 16,
   },
 });
