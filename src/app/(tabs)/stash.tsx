@@ -43,6 +43,7 @@ import { router } from "expo-router";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Platform,
   Pressable,
@@ -62,6 +63,7 @@ import { useAuth } from "@/auth/context";
 import { ScreenHeader } from "@/components/screen-header";
 import { Badge } from "@/components/ui/badge";
 import { NeedleRow } from "@/components/ui/needle-row";
+import { PhotoFrame } from "@/components/ui/photo-frame";
 import { SwipeRow } from "@/components/ui/swipe-row";
 import { YarnCard } from "@/components/ui/yarn-card";
 import {
@@ -69,6 +71,7 @@ import {
   deleteLocalNeedle,
   deletePatternPdf,
   deleteStashEntry,
+  fillPatternPhotos,
   fillStashPhotos,
   forgetYarnColor,
   refreshStash,
@@ -228,11 +231,15 @@ const NeedleItem = memo(function NeedleItem({
 /**
  * One line on the pattern shelf.
  *
- * The needle rows' structure without the swatch: a flush ruled row, the name on
- * top, whatever else identifies it underneath, and the marks on the right. It
- * is drawn here rather than in `components/ui` because nothing else in the app
- * has a use for it — the pattern cards on Saves and Discover carry a photograph
- * and a price, and neither of those exists for a file on the phone.
+ * The needle rows' structure: a flush ruled row, the name on top, whatever
+ * else identifies it underneath, and the marks on the right. A download wears
+ * the pattern's own photograph where the needle row's swatch sits — borrowed
+ * from the bookmark the way the name is, see `PatternShelfRow.photoUrl`. A
+ * custom pattern goes without rather than wearing the stripes: those mean "no
+ * picture yet", and for a design Ravelry has never heard of there is no
+ * picture coming. It is drawn here rather than in `components/ui` because
+ * nothing else in the app has a use for it — the pattern cards on Saves and
+ * Discover are a different thing, a photograph with a price on it.
  *
  * Two marks, and the pair is the whole point of the row. `offline` is the same
  * aqua dot the pattern cards wear for a downloaded file, which is what says
@@ -293,6 +300,13 @@ const PatternItem = memo(function PatternItem({
           pressed ? { backgroundColor: colors.surfaceSunk } : null,
         ]}
       >
+        {row.custom ? null : (
+          // The needle swatch's 46pt, so the drawer keeps one left edge. With
+          // no photograph anywhere yet it stripes, honestly: the fill behind
+          // the list is on its way, or the pattern genuinely has no picture.
+          <PhotoFrame src={row.photoUrl ?? undefined} width={46} aspect="1/1" />
+        )}
+
         <View style={styles.patternBody}>
           <Text
             numberOfLines={1}
@@ -346,7 +360,7 @@ const keyForStashItem = (item: StashItem) => {
 export default function StashScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { status, user, signIn, signOut } = useAuth();
+  const { status, user, signIn, signOut, deleteAccount } = useAuth();
   const { data: yarn } = useStash();
   const { data: needles } = useNeedles();
   const { data: patterns } = usePatternShelf();
@@ -412,6 +426,55 @@ export default function StashScreen() {
     signOutNow();
   }, [signOutNow]);
 
+  /**
+   * The nearest thing this app has to deleting an account: there is no Softly
+   * account behind the Ravelry sign-in, so the session and what is on this
+   * phone are the whole of it. See `eraseDeviceData`. It is called what it
+   * does rather than "Delete account", because the only account in sight is
+   * the Ravelry one and nobody should have to wonder whether that is going.
+   *
+   * It asks first, in the system's own dialog, and says what goes and what does
+   * not — the needles, counters and custom patterns exist nowhere else, and the
+   * Ravelry account is not this app's to remove. A success needs no word: the
+   * welcome screen replaces this one. A failure does, because the knitter is
+   * signed out either way and would otherwise believe the phone was clean.
+   */
+  const confirmDeleteAccount = useCallback(() => {
+    Alert.alert(
+      "Erase Softly data?",
+      "This signs you out and erases everything Softly keeps on this device: " +
+        "your synced stash, projects and saves, downloaded and imported PDFs, " +
+        "and the needles, custom patterns and row counters you added here. " +
+        "It can't be undone.\n\n" +
+        "Your Ravelry account and everything in it stay exactly as they are.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Erase",
+          style: "destructive",
+          onPress: () => {
+            setFailed(false);
+            deleteAccount().then(haptics.success, () => {
+              haptics.error();
+              Alert.alert(
+                "Couldn't erase everything",
+                "You've been signed out, but some of Softly's data may still " +
+                  "be on this device. Sign in and try again, or delete the " +
+                  "app to remove it.",
+              );
+            });
+          },
+        },
+      ],
+    );
+  }, [deleteAccount]);
+
+  const handleDeleteAccount = useCallback(() => {
+    haptics.tap();
+    setAccountOpen(false);
+    confirmDeleteAccount();
+  }, [confirmDeleteAccount]);
+
   // Neither sheet is asked to hand anything back: this screen is not in the
   // middle of choosing, the way Cast on is when it opens the same two. The
   // rows arrive on their own — both lists are live queries over the writes.
@@ -472,6 +535,16 @@ export default function StashScreen() {
       void fillStashPhotos();
     }
   }, [signedIn, yarn]);
+
+  // The pattern shelf's thumbnails, the same way and for the same reason.
+  // Usually there is nothing to do: a download's photograph rides in on its
+  // bookmark, so this only ever fetches for a file whose pattern was never
+  // saved. See `fillPatternPhotos`.
+  useEffect(() => {
+    if (signedIn) {
+      void fillPatternPhotos();
+    }
+  }, [signedIn, patterns]);
 
   // A gesture on this screen, not the global sync status: see `usePullToSync`.
   const { refreshing, onRefresh } = usePullToSync(username);
@@ -688,13 +761,21 @@ export default function StashScreen() {
                     </SwiftUIText>
                   }
                 >
-                  {/* One row, and iOS draws it in red off `role` — the same
-                      thing the popover below says in words and position. */}
+                  {/* Two rows, and iOS draws both in red off `role` — the
+                      same thing the popover below says in words and position.
+                      Deleting asks before it does anything; see
+                      `confirmDeleteAccount`. */}
                   <Button
                     label="Sign out"
                     role="destructive"
                     systemImage="rectangle.portrait.and.arrow.right"
                     onPress={signOutNow}
+                  />
+                  <Button
+                    label="Erase Softly data"
+                    role="destructive"
+                    systemImage="trash"
+                    onPress={confirmDeleteAccount}
                   />
                 </Menu>
               </Host>
@@ -838,6 +919,23 @@ export default function StashScreen() {
               >
                 <Text style={[styles.popoverLabel, { color: colors.ink }]}>
                   Sign out
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Erase Softly data"
+                onPress={handleDeleteAccount}
+                style={({ pressed }) => [
+                  styles.popoverRow,
+                  {
+                    borderTopWidth: 1,
+                    borderTopColor: colors.hairline,
+                  },
+                  pressed ? { backgroundColor: colors.surfaceSunk } : null,
+                ]}
+              >
+                <Text style={[styles.popoverLabel, { color: colors.ink }]}>
+                  Erase Softly data
                 </Text>
               </Pressable>
             </View>

@@ -1194,15 +1194,9 @@ export default function PatternScreen() {
 
                 {/* Where the knitter is in the photographs.
 
-                    On paper under the frame rather than laid on it, which is
-                    the decision here worth writing down. Dots over photography
-                    go illegible the moment the shot is a pale one — and a flat
-                    lay on white linen is half of Ravelry — but the reason is
-                    the larger one: a page indicator is chrome about chrome. The
-                    photograph is what is being looked at, and a mark competing
-                    with it has misunderstood which of the two is the pattern.
-                    The counters pager reached the same answer and put its dots
-                    on paper too.
+                    Laid on the photograph near its bottom edge rather than on
+                    paper beneath it, so the hero block ends where the image
+                    does and the frame stays edge to edge.
 
                     Same 5px circles as `Badge`'s status dot, at the same
                     hairline values, so the app's one round shape stays the one
@@ -1666,17 +1660,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   /**
-   * The dots' strip of paper, inside the hero block and above its hairline —
-   * the only padding this block has. Everything above it runs edge to edge,
-   * because every page in the pager is the window wide.
+   * Overlaid on the photograph, pinned just above its bottom edge and
+   * centred, so the hero block is exactly the pager tall.
    */
   dots: {
+    position: "absolute",
+    bottom: space.s2,
+    left: 0,
+    right: 0,
     flexDirection: "row",
-    alignSelf: "center",
+    justifyContent: "center",
     // The dot's own width, so the run of them reads as a measure rather than as
     // a dotted line. The counters pager's spacing exactly.
     gap: 5,
-    paddingVertical: space.s2,
   },
   dot: {
     // `Badge`'s status dot exactly, borrowed a second time. See the note where

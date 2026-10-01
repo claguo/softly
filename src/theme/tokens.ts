@@ -87,19 +87,24 @@ export type Palette = {
   readonly [K in keyof (typeof palette)["light"]]: string;
 };
 
-/** Solway carries all UI text across five real weights, so each slot is still its
- * own cut and emphasis is drawn rather than synthesised; Yuji Mai is display-only
- * (≥20px). The slot names no longer describe their cuts: body starts at Light, so
- * every slot shifts down a rung and `uiMedium` renders Regular 400 while
- * `uiSemiBold` renders Medium 500. Solway ships no 600, which is why the shift
- * absorbs cleanly rather than stranding a weight. */
+/** Geist carries all UI text; Yuji Mai is display-only (≥20px). Every slot
+ * bolder than body sits one rung below the cut its name says: `uiSemiBold`
+ * renders Medium 500 and `uiBold` renders SemiBold 600, because Geist draws
+ * heavier at a given weight than the faces this app used before, and the
+ * emphasis read too loud carried over at face value. Body stays on Regular 400,
+ * the one rung that did not move. The shift leaves `uiMedium` on the same cut as
+ * `ui`, so it is currently emphasis in name only — the 14 places that ask for it
+ * render as body until it is given a cut of its own. `uiBold` and `uiExtraBold`
+ * are unused. The faces are bundled through `@expo-google-fonts` and loaded in
+ * the root layout, so the promise holds on any device rather than only where the
+ * family happens to be installed. */
 export const fonts = {
   display: "YujiMai_400Regular",
-  ui: "Solway_300Light",
-  uiMedium: "Solway_400Regular",
-  uiSemiBold: "Solway_500Medium",
-  uiBold: "Solway_700Bold",
-  uiExtraBold: "Solway_800ExtraBold",
+  ui: "Geist_400Regular",
+  uiMedium: "Geist_400Regular",
+  uiSemiBold: "Geist_500Medium",
+  uiBold: "Geist_600SemiBold",
+  uiExtraBold: "Geist_700Bold",
 } as const;
 
 /** Sizes in pt; line heights precomputed (RN wants absolute lineHeight). */

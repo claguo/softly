@@ -92,6 +92,14 @@ function changed(): void {
   }
 }
 
+/**
+ * Tells the store its table was emptied underneath it. For `eraseDeviceData`,
+ * the one writer to `row_counters` that is not in this file.
+ */
+export function rowCountersErased(): void {
+  changed();
+}
+
 export function subscribeToRowCounters(listener: () => void): () => void {
   listeners.add(listener);
   return () => {

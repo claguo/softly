@@ -177,6 +177,13 @@ export type PatternShelfRow = {
   readonly secondary: string | null;
   /** A PDF for this pattern is on the device. Always true for a download. */
   readonly offline: boolean;
+  /**
+   * The pattern's own photograph, borrowed the same way the name is: from the
+   * bookmark, or failing that from the cache `pattern-photos.ts` keeps. Always
+   * null on a custom pattern — a design Ravelry has never heard of has no
+   * catalogue shot anywhere, and the row does not pretend one is coming.
+   */
+  readonly photoUrl: string | null;
 };
 
 /** Whether this custom pattern has a PDF; see `favoriteHasPdf` for the idiom. */
@@ -244,6 +251,7 @@ const selectPatternShelf = (): PatternShelfRow[] => {
       // two anyway, and on one with neither the row is a name and nothing else.
       secondary: row.designer ?? row.sourceName,
       offline: row.offline,
+      photoUrl: null,
     }));
 
   const downloaded = db
@@ -252,17 +260,23 @@ const selectPatternShelf = (): PatternShelfRow[] => {
       filename: patternPdfs.filename,
       favoriteName: favorites.name,
       favoriteDesigner: favorites.designer,
+      favoritePhotoUrl: favorites.photoUrl,
       projectName: projects.patternName,
       projectDesigner: projects.designer,
+      cachedPhotoUrl: patternPhotos.photoUrl,
     })
     .from(patternPdfs)
     .leftJoin(favorites, eq(patternPdfs.patternId, favorites.patternId))
     .leftJoin(projects, eq(patternPdfs.patternId, projects.patternId))
+    .leftJoin(patternPhotos, eq(patternPdfs.patternId, patternPhotos.patternId))
     // Negative ids are the custom patterns' own files, already counted above.
     .where(gt(patternPdfs.patternId, 0))
     .all();
 
-  const folded = new Map<number, { filename: string | null; name: string | null; designer: string | null }>();
+  const folded = new Map<
+    number,
+    { filename: string | null; name: string | null; designer: string | null; photoUrl: string | null }
+  >();
 
   for (const row of downloaded) {
     const found = folded.get(row.id);
@@ -270,15 +284,21 @@ const selectPatternShelf = (): PatternShelfRow[] => {
     // copy is what the knitter called it when they cast on.
     const name = row.favoriteName ?? row.projectName ?? null;
     const designer = row.favoriteDesigner ?? row.projectDesigner ?? null;
+    // The bookmark first here too, and not only for rank: its photograph is
+    // the square crop sized for a list cell, where the cache keeps the large
+    // one the project screen wanted. See `fillPatternPhotos` for who fills the
+    // cache when neither a bookmark nor a project ever named this file.
+    const photoUrl = row.favoritePhotoUrl ?? row.cachedPhotoUrl ?? null;
 
     folded.set(
       row.id,
       found === undefined
-        ? { filename: row.filename, name, designer }
+        ? { filename: row.filename, name, designer, photoUrl }
         : {
             filename: found.filename ?? row.filename,
             name: found.name ?? name,
             designer: found.designer ?? designer,
+            photoUrl: found.photoUrl ?? photoUrl,
           },
     );
   }
@@ -296,6 +316,7 @@ const selectPatternShelf = (): PatternShelfRow[] => {
       // twice would be printing it twice.
       secondary: entry.designer ?? (entry.name === null ? null : entry.filename),
       offline: true,
+      photoUrl: entry.photoUrl,
     });
   }
 
@@ -400,17 +421,19 @@ const projectsStore = createLiveStore(
   [getTableName(projects), getTableName(patternPhotos)],
   selectProjects,
 );
-// Four tables, because the shelf reads from four: the patterns this app wrote,
-// the files on the device, and the two places a downloaded pattern's name can
-// be borrowed from. Leaving any of them off would strand the list — a PDF
-// finishing its download, or a sync finally naming one, would go unnoticed
-// until something else happened to throw the snapshot away.
+// Five tables, because the shelf reads from five: the patterns this app wrote,
+// the files on the device, the two places a downloaded pattern's name can be
+// borrowed from, and the photographs `pattern-photos.ts` fills in behind the
+// list. Leaving any of them off would strand the list — a PDF finishing its
+// download, a sync finally naming one, or a thumbnail landing for it, would go
+// unnoticed until something else happened to throw the snapshot away.
 const patternShelfStore = createLiveStore(
   [
     getTableName(customPatterns),
     getTableName(patternPdfs),
     getTableName(favorites),
     getTableName(projects),
+    getTableName(patternPhotos),
   ],
   selectPatternShelf,
 );

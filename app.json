@@ -8,7 +8,10 @@
     "scheme": "softly",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "bundleIdentifier": "tools.softly.app"
+      "bundleIdentifier": "tools.softly.app",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "tools.softly.app",

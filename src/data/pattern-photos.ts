@@ -1,12 +1,14 @@
 /**
- * A photograph for a project that has none.
+ * A photograph for a pattern the mirror never carried one for.
  *
  * Most projects in most accounts have never been photographed — `first_photo`
  * is null on every project in the test account — so the project screen opens on
  * the striped placeholder for something the app could perfectly well show a
  * picture of: the pattern's own. It is not the knitter's finished object and it
  * should never be mistaken for one, but it is what the thing is *meant* to look
- * like, and that beats stripes.
+ * like, and that beats stripes. The pattern shelf on Stash leans on the same
+ * cache from the other side: a downloaded PDF whose pattern was never
+ * bookmarked has no photograph anywhere else on the device.
  *
  * There are two ways to get it and the free one is tried first:
  *
@@ -22,11 +24,11 @@
  * to change and the next visit should not pay again.
  */
 
-import { and, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull } from 'drizzle-orm';
 
 import { db } from '@/data/db';
 import { patternShow } from '@/data/ravelry';
-import { favorites, patternPhotos, projects } from '@/data/schema';
+import { favorites, patternPdfs, patternPhotos, projects } from '@/data/schema';
 
 /**
  * Largest first, which is the opposite of the order `sync.ts` reads photos in.
@@ -122,7 +124,10 @@ const CONCURRENCY = 4;
 let filling: Promise<void> | null = null;
 
 /**
- * Fills in a photograph for every project that has none of its own.
+ * Fills in a photograph for everything a list will want one for: projects with
+ * no picture of their own, and downloaded PDFs whose pattern was never
+ * bookmarked — the shelf on Stash borrows a bookmark's photograph the same way
+ * it borrows the name, so only the never-bookmarked file has to be asked about.
  *
  * For the lists. The detail screen can afford to ask about one pattern when it
  * opens; a list cannot ask about twenty, one card at a time, as they scroll
@@ -130,10 +135,10 @@ let filling: Promise<void> | null = null;
  * majority of it never touches the network, because a bookmarked pattern's
  * photograph is already in `favorites.raw` and only has to be copied across.
  *
- * Safe to call whenever the projects change, and cheap when nothing has: with
- * every pattern already answered for it is one query and no requests at all.
+ * Safe to call whenever either list changes, and cheap when nothing has: with
+ * every pattern already answered for it is two queries and no requests at all.
  */
-export function fillProjectPatternPhotos(): Promise<void> {
+export function fillPatternPhotos(): Promise<void> {
   filling ??= (async () => {
     try {
       const wanted = db
@@ -152,7 +157,29 @@ export function fillProjectPatternPhotos(): Promise<void> {
         )
         .all();
 
-      const ids = wanted.flatMap((row) => (row.patternId === null ? [] : [row.patternId]));
+      const shelved = db
+        .selectDistinct({ patternId: patternPdfs.patternId })
+        .from(patternPdfs)
+        .leftJoin(favorites, eq(patternPdfs.patternId, favorites.patternId))
+        .leftJoin(patternPhotos, eq(patternPdfs.patternId, patternPhotos.patternId))
+        .where(
+          and(
+            // Negative ids are custom patterns' files: not on Ravelry, so
+            // there is no photograph in the world to go and fetch.
+            gt(patternPdfs.patternId, 0),
+            // A bookmark with a photograph already answers the shelf directly.
+            isNull(favorites.photoUrl),
+            // Never asked, as above.
+            isNull(patternPhotos.patternId),
+          ),
+        )
+        .all();
+
+      const ids = [
+        ...new Set(
+          [...wanted, ...shelved].flatMap((row) => (row.patternId === null ? [] : [row.patternId])),
+        ),
+      ];
 
       // The free pass first, and for most accounts it is the only one that
       // does anything: a knitter tends to have bookmarked what they cast on.

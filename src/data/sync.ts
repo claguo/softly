@@ -619,6 +619,23 @@ function start(username: string, resources: readonly SyncResource[]): Promise<Sy
 function noop(): void {}
 
 /**
+ * Waits out whatever pass is running, then forgets when the last one was.
+ *
+ * For `eraseDeviceData` and nothing else. A pass still on the wire when the
+ * tables are emptied would put its rows straight back, so the erase stands
+ * behind it first — the session is already gone by then, so the pass ends at
+ * its next request rather than running its course. The status is reset by hand
+ * because `lastSyncedAt` is read out of `sync_state` once, at import, and
+ * would otherwise go on naming a sync whose rows no longer exist.
+ */
+export async function settleSyncForErase(): Promise<void> {
+  while (inFlight !== null) {
+    await inFlight.done.then(noop, noop);
+  }
+  setStatus({ phase: 'idle', lastSyncedAt: null });
+}
+
+/**
  * Pulls every resource for `username` into the local tables.
  *
  * Being offline, being refused, being signed out and failing to write are all

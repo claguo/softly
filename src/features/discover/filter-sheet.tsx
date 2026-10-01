@@ -19,6 +19,16 @@
  *   sheet opens, and only Show patterns hands it back; dismissing throws it
  *   away, which is what a knitter who swipes down means by swiping down.
  *
+ * The row at the very top is the one control here that is not a word out of
+ * Ravelry's vocabulary. Makeable with materials in your stash is a *mode*: what
+ * it turns on is the knitter's own drawer restated as two ordinary filters, a
+ * set of yarn weights and a needle range, which is why it is a switch above the
+ * sections rather than another chip inside the two sections it writes to. It
+ * holds no state of its own — `matchesStashProfile` reads its position back off
+ * the draft — so unticking a weight under Yarn weight below turns it off on the
+ * way past, and the filters it writes are counted in the badge, chipped on the
+ * rail and dropped by Clear all exactly like any others.
+ *
  * Flat option sets are chips, because they are a vocabulary to graze rather
  * than a list to read. The category tree is rows instead: it nests three deep,
  * chips cannot show that, and a node is selectable in its own right at every
@@ -26,9 +36,10 @@
  * row carries a selection target and, when it has children, a separate
  * disclosure beside it.
  *
- * Sort sits at the top and is deliberately not counted anywhere: it reorders
- * the grid, it never removes anything from it, and a badge that said "1 filter"
- * for having chosen Newest would be describing a narrowing that did not happen.
+ * Sort is the first of the sections and is deliberately not counted anywhere:
+ * it reorders the grid, it never removes anything from it, and a badge that
+ * said "1 filter" for having chosen Newest would be describing a narrowing that
+ * did not happen.
  *
  * `pattern-search-filters` and `reference` are imported from their own modules
  * rather than through the `@/data` barrel: everything this sheet needs is a
@@ -37,11 +48,13 @@
 
 import { useState, type JSX, type ReactNode } from 'react';
 import {
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native';
@@ -74,28 +87,57 @@ import {
 import { YARN_WEIGHTS } from '@/data/reference';
 import {
   countFilters,
+  matchesStashProfile,
+  needleSizeSelected,
   NO_FILTERS,
   setPhoto,
   setRange,
   setSort,
+  toggleNeedleSize,
   toggleValue,
+  withoutStashProfile,
+  withStashProfile,
   type ListKey,
   type PatternFilterState,
   type Range,
   type RangeKey,
 } from '@/features/discover/filter-state';
+import {
+  formatMm,
+  type NeedleRange,
+  type StashMaterial,
+  type StashWeight,
+} from '@/features/discover/stash-profile';
 import { haptics } from '@/haptics';
 import { fonts, space, tap, trackSmall, type, useTheme } from '@/theme';
 
 export type FilterSheetProps = {
   readonly visible: boolean;
   readonly value: PatternFilterState;
+  /** The stash's yarn weights, for the makeable row. See `withStashProfile`. */
+  readonly stashWeights: readonly StashWeight[];
+  /** The needle drawer's span, or null when nothing has been measured. */
+  readonly stashRange: NeedleRange | null;
+  /** The skeins on hand, one row each, for Your stash. See `deriveMaterials`. */
+  readonly materials: readonly StashMaterial[];
+  /** The drawer's distinct sizes, thinnest first. See `deriveNeedleSizes`. */
+  readonly needleSizes: readonly number[];
   readonly onClose: () => void;
   readonly onApply: (next: PatternFilterState) => void;
 };
 
 /** Which list an attribute group's values belong to. See the note in the data. */
 const LIST_FOR: Record<AttributeParam, ListKey> = { pa: 'attributes', fit: 'fit' };
+
+/**
+ * The switch's name, and the only place the mode explains itself.
+ *
+ * Written once because it is said twice — drawn on screen, and handed to the
+ * row as its accessible name — and those two must not be allowed to drift into
+ * a control that reads one thing and announces another. Sentence case like
+ * every other label in this app, whatever case it was asked for in.
+ */
+const MAKEABLE_LABEL = 'Makeable with materials in your stash';
 
 /**
  * How a disclosure opens and shuts.
@@ -132,6 +174,13 @@ function bound(value: number | null | undefined): string {
   return typeof value === 'number' ? String(value) : '';
 }
 
+/** One range field's two boxes, written out from a band the state already holds. */
+function rangeDraft(range: Range | undefined): RangeDraft {
+  return range === undefined
+    ? NO_RANGE
+    : { min: bound(range.min), max: bound(range.max) };
+}
+
 /**
  * The four range fields, filled in from a filter state.
  *
@@ -144,11 +193,7 @@ function rangeDrafts(state: PatternFilterState): RangeDrafts {
   const drafts = {} as { [K in RangeKey]: RangeDraft };
 
   for (const filter of RANGE_FILTERS) {
-    const range = state.ranges[filter.key];
-    drafts[filter.key] =
-      range === undefined
-        ? NO_RANGE
-        : { min: bound(range.min), max: bound(range.max) };
+    drafts[filter.key] = rangeDraft(state.ranges[filter.key]);
   }
 
   return drafts;
@@ -448,6 +493,10 @@ function CategoryRows({
 export function FilterSheet({
   visible,
   value,
+  stashWeights,
+  stashRange,
+  materials,
+  needleSizes,
   onClose,
   onApply,
 }: FilterSheetProps): JSX.Element {
@@ -481,6 +530,86 @@ export function FilterSheet({
   // Sort is not counted: see the note at the top of the file.
   const count = countFilters(draft);
   const dirty = count > 0 || draft.sort !== null;
+
+  /**
+   * Whether the draft *is* the stash profile — read off it, never assumed.
+   *
+   * A plain const and not state, which is what keeps the switch and the filters
+   * from being two accounts of the same fact that can drift apart: a switch that
+   * reads on while the thing it names is not in the draft is a switch that lies,
+   * and so is one that reads on because a tap said so rather than because a
+   * profile is there. Unticking a weight below drops it, seeding from `value` on
+   * open makes it follow whatever the screen arrived with, and Clear all drops
+   * it because `NO_FILTERS` has no profile in it — none of which needs a line of
+   * its own here.
+   *
+   * Never `true` by assumption, however much this sheet's screen wants to open
+   * on the makeable question. A drawer with nothing in it yields a profile with
+   * nothing in it, and a switch shown on over an unfiltered grid would be
+   * telling a knitter with an empty stash that the whole of Ravelry is what they
+   * could cast on tonight. `matchesStashProfile` answers false for a profile
+   * that cannot be expressed, so on a brand-new install this opens off and
+   * claims nothing.
+   */
+  const makeable = matchesStashProfile(draft, stashWeights, stashRange);
+
+  const toggleMakeable = () => {
+    // The row owns the press, so the row owns the tick: the switch inside it is
+    // rendered display-only — no `onValueChange`, and no taps reach it — so the
+    // only hand on this is the row's.
+    haptics.tap();
+
+    const next = makeable
+      ? withoutStashProfile(draft)
+      : // Turning the mode back on restores the whole profile: a weight
+        // unticked three minutes ago should not silently narrow tomorrow's
+        // results. On an empty drawer this writes nothing and the switch stays
+        // off, which is the honest answer rather than a failed tap — there is
+        // nothing filed to be makeable from yet.
+        withStashProfile(draft, stashWeights, stashRange);
+
+    setDraft(next);
+    // The needle band is one of the range fields further down this same sheet,
+    // and those fields hold their own typed text — so the band has to land in
+    // both places or Needle size sits there showing two empty boxes over a
+    // filter that is set, and the next keystroke in one of them writes the empty
+    // box back over the band. Only that one field is rewritten: the other three
+    // hold whatever is half-typed in them, and `rangeDrafts` would round "4."
+    // back to "4" on the way past.
+    setDrafts((current) => ({
+      ...current,
+      'needle-size': rangeDraft(next.ranges['needle-size']),
+    }));
+  };
+
+  /**
+   * How much of Your stash is ticked, counted the way the rows draw themselves.
+   *
+   * Both halves are read straight off the draft rather than accumulated as taps
+   * arrive, which is what keeps this number and the marks below it the same
+   * fact: unticking DK under Yarn weight puts every DK skein out here on the
+   * same render, and the header follows without being told.
+   */
+  const stashCount =
+    materials.filter((material) => draft.weights.includes(material.weight.permalink)).length +
+    needleSizes.filter((mm) => needleSizeSelected(draft, mm)).length;
+
+  const toggleNeedle = (mm: number) => {
+    haptics.tap();
+
+    // `draft` by hand rather than the functional updater every other row here
+    // uses, for `toggleMakeable`'s reason: the band that lands in the state and
+    // the text that lands in the Needle size field have to be written from the
+    // same `next`, and an updater's argument is not in scope out here. Nothing
+    // else on this sheet writes the draft between the two calls.
+    const next = toggleNeedleSize(draft, mm, needleSizes);
+
+    setDraft(next);
+    setDrafts((current) => ({
+      ...current,
+      'needle-size': rangeDraft(next.ranges['needle-size']),
+    }));
+  };
 
   const toggleSection = (key: string) => {
     setOpen((current) =>
@@ -584,223 +713,404 @@ export function FilterSheet({
           </View>
         </View>
 
-        <ScrollView
-          contentContainerStyle={styles.body}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag">
-          <Section
-            label="Sort"
-            value={SORTS.find((sort) => sort.permalink === draft.sort)?.label}
-            expanded={open.includes('sort')}
-            onToggle={() => toggleSection('sort')}>
-            <ChipRow
-              options={SORTS}
-              selected={(permalink) => draft.sort === permalink}
-              onPress={(permalink) =>
-                // Tapping the chosen sort again gives Ravelry its own default
-                // back, which is not any of the nine and cannot be chosen.
-                setDraft((current) =>
-                  setSort(current, current.sort === permalink ? null : permalink),
-                )
-              }
-            />
-          </Section>
+        {/* The range sections hold this sheet's only writing surfaces, and
+            where they land depends on how many sections above them are open —
+            the same field sits high on a shut sheet and low on an opened one,
+            so there is no one arrangement to design around. The sheet shrinks
+            over the keyboard the way every form card in this app does, and the
+            footer rides up with it so Show patterns stays reachable mid-number. */}
+        <KeyboardAvoidingView
+          style={styles.grow}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ScrollView
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag">
+            {/* First, and above Sort, because it is the question the screen
+                behind this sheet opens on. One control, not two: the sentence is
+                the switch's name rather than a caption beside it, so the whole row
+                takes the press and the whole row is what a screen reader
+                announces — a bare switch with a label floating next to it would be
+                two things to find and one of them unlabelled. The row is a section
+                header's twin in everything but what it does, which is what keeps
+                it from reading as an announcement stuck on top of the sheet. */}
+            <Pressable
+              accessibilityRole="switch"
+              accessibilityState={{ checked: makeable }}
+              accessibilityLabel={MAKEABLE_LABEL}
+              onPress={toggleMakeable}
+              style={({ pressed }) => [
+                styles.makeableRow,
+                {
+                  borderBottomColor: colors.hairline,
+                  backgroundColor: pressed ? colors.surfaceSunk : colors.surface,
+                },
+              ]}>
+              {/* Allowed to wrap. It is 37 characters and the switch takes 51 of
+                  the width beside it, so on a narrow screen or at large type it
+                  needs a second line — and this sentence is the only place the
+                  mode explains itself, so ellipsing it away would leave the switch
+                  meaning nothing. The row grows instead. */}
+              <Text style={[styles.makeableLabel, { color: colors.ink }]}>
+                {MAKEABLE_LABEL}
+              </Text>
 
-          <Section
-            label="Craft"
-            value={tally(draft.craft.length)}
-            expanded={open.includes('craft')}
-            onToggle={() => toggleSection('craft')}>
-            <ChipRow
-              options={CRAFTS}
-              selected={(permalink) => draft.craft.includes(permalink)}
-              onPress={(permalink) => toggle('craft', permalink)}
-            />
-          </Section>
-
-          <Section
-            label="Availability"
-            value={tally(draft.availability.length)}
-            expanded={open.includes('availability')}
-            onToggle={() => toggleSection('availability')}>
-            <ChipRow
-              options={AVAILABILITY}
-              selected={(permalink) => draft.availability.includes(permalink)}
-              onPress={(permalink) => toggle('availability', permalink)}
-            />
-          </Section>
-
-          <Section
-            label="Yarn weight"
-            value={tally(draft.weights.length)}
-            expanded={open.includes('weights')}
-            onToggle={() => toggleSection('weights')}>
-            <ChipRow
-              options={YARN_WEIGHTS}
-              selected={(permalink) => draft.weights.includes(permalink)}
-              onPress={(permalink) => toggle('weights', permalink)}
-            />
-          </Section>
-
-          {RANGE_FILTERS.map((filter) => {
-            const key = `range:${filter.key}`;
-            const entry = drafts[filter.key];
-
-            return (
-              <Section
-                key={key}
-                label={filter.label}
-                value={rangeSummary(entry)}
-                expanded={open.includes(key)}
-                onToggle={() => toggleSection(key)}>
-                <View style={styles.range}>
-                  {/* Either end may be left empty, and an empty end is not
-                      zero — it is "as far as Ravelry goes", which is why the
-                      hint says the unit and not the bounds. */}
-                  <View style={styles.rangeEnd}>
-                    <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>Min</Text>
-                    <TextField
-                      value={entry.min}
-                      onChangeText={(text) => editRange(filter.key, 'min', text)}
-                      accessibilityLabel={`Minimum ${filter.label} in ${filter.unit}`}
-                      returnKeyType="done"
-                    />
-                  </View>
-                  <View style={styles.rangeEnd}>
-                    <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>Max</Text>
-                    <TextField
-                      value={entry.max}
-                      onChangeText={(text) => editRange(filter.key, 'max', text)}
-                      accessibilityLabel={`Maximum ${filter.label} in ${filter.unit}`}
-                      returnKeyType="done"
-                    />
-                  </View>
-                </View>
-                <Text style={[styles.hint, { color: colors.ink2 }]}>{filter.unit}</Text>
-              </Section>
-            );
-          })}
-
-          <Section
-            label="Category"
-            value={tally(draft.categories.length)}
-            expanded={open.includes('categories')}
-            onToggle={() => toggleSection('categories')}>
-            {/* The rows carry their own hairlines and their own indent, so this
-                block takes none of the padding the chip rows take. */}
-            <View style={styles.tree}>
-              <CategoryRows
-                nodes={PATTERN_CATEGORIES}
-                depth={0}
-                selected={draft.categories}
-                opened={branches}
-                onSelect={(permalink) => toggle('categories', permalink)}
-                onOpen={toggleBranch}
+              {/* The part that shows, and only that. It takes `value` and no
+                  `onValueChange`, so state flows one way into it and the row's
+                  `onPress` above stays the single writer of the draft; the three
+                  props after it are what keep the row the single *control*, taking
+                  the switch out of the touch tree, out of the iOS element list and
+                  out of the Android tree, so a knitter swiping through finds one
+                  sentence to toggle rather than a labelled row and an anonymous
+                  switch that do the same thing. No `trackColor` or `thumbColor`:
+                  the system's own is the whole reason it is here, and a tinted one
+                  would be neither this app's language nor the platform's. */}
+              <Switch
+                value={makeable}
+                pointerEvents="none"
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
               />
-            </View>
-          </Section>
+            </Pressable>
 
-          {ATTRIBUTE_GROUPS.map((group) => {
-            const key = `group:${group.permalink}`;
+            {/* The knitter's own materials, restated as the ordinary filters
+                they amount to: a skein is its yarn weight, a needle is a point
+                inside the needle band. Directly under the switch because it is
+                the same sentence taken apart — the switch selects the lot, and
+                these are the lot, one at a time, for a knitter who wants
+                patterns for the four skeins of DK rather than for everything in
+                the basket.
 
-            return (
+                Nothing here is stored. A row is ticked because the filter it
+                names is in the draft, asked fresh on every render, exactly as
+                `matchesStashProfile` asks whether the mode is on — which is the
+                whole reason ticking every row makes the switch above come on by
+                itself, and the whole reason the switch stays the select-all it
+                already was. There is no second account of what is chosen to
+                fall out of step with the first, and no new state to clear.
+
+                Used-up and given-away skeins are not on the list. A ball that
+                is gone cannot make anything, so it has no business offering a
+                filter — and leaving it out is also what keeps the two accounts
+                exact, since `deriveWeights` skips the same rows.
+
+                Rows and not chips. Chips are for a vocabulary to graze, and a
+                colourway called Cascade 220 Heathers Doeskin is not a word out
+                of a vocabulary — it is a named thing, as long as a category
+                label, and it belongs in a column that can hold it. */}
+            {materials.length > 0 || needleSizes.length > 0 ? (
               <Section
-                key={key}
-                label={group.label}
-                value={tally(countGroup(draft, group))}
-                expanded={open.includes(key)}
-                onToggle={() => toggleSection(key)}>
-                {group.options.length === 0 ? null : (
-                  <ChipRow
-                    options={group.options}
-                    selected={(permalink) =>
-                      draft[LIST_FOR[group.param]].includes(permalink)
-                    }
-                    onPress={(permalink) => toggle(LIST_FOR[group.param], permalink)}
-                  />
-                )}
+                label="Your stash"
+                value={tally(stashCount)}
+                expanded={open.includes('stash')}
+                onToggle={() => toggleSection('stash')}>
+                {/* The rows carry their own hairlines, as in the category tree,
+                    so the block takes none of the chip padding and shares its
+                    last rule with the section's own. */}
+                <View style={styles.tree}>
+                  {materials.map((material) => {
+                    const selected = draft.weights.includes(material.weight.permalink);
 
-                {/* A child group is a label and its own chips, not a section of
-                    its own: it is already behind one disclosure, and putting it
-                    behind a second would hide four sleeve options two taps
-                    deep. Its `param` is read off the child rather than the
-                    parent — Age / Size / Fit goes to `fit`, and nothing else
-                    does. */}
-                {group.children.map((child) => (
-                  <View key={child.permalink} style={styles.subGroup}>
-                    <Text style={[styles.subLabel, { color: colors.ink2 }]}>
-                      {child.label}
-                    </Text>
-                    <ChipRow
-                      options={child.options}
-                      selected={(permalink) =>
-                        draft[LIST_FOR[child.param]].includes(permalink)
-                      }
-                      onPress={(permalink) => toggle(LIST_FOR[child.param], permalink)}
-                    />
-                  </View>
-                ))}
+                    return (
+                      <View
+                        key={material.id}
+                        style={[styles.row, { borderBottomColor: colors.hairline }]}>
+                        {/* One pressable across the whole row: unlike a category
+                            there is nothing here to open, so the row has one
+                            meaning and takes the press anywhere. It pays its own
+                            left inset because `rowBody` leaves that to the
+                            indent a tree row computes. */}
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          accessibilityLabel={`${material.label}, ${material.weight.label}`}
+                          onPress={() => {
+                            haptics.tap();
+                            setDraft((current) =>
+                              toggleValue(current, 'weights', material.weight.permalink),
+                            );
+                          }}
+                          style={({ pressed }) => [
+                            styles.rowBody,
+                            styles.rowFlush,
+                            {
+                              backgroundColor: pressed ? colors.surfaceSunk : colors.surface,
+                            },
+                          ]}>
+                          <Text
+                            numberOfLines={1}
+                            style={[
+                              styles.rowLabel,
+                              { color: selected ? colors.ink : colors.ink2 },
+                            ]}>
+                            {material.label}
+                          </Text>
+
+                          {/* What the row actually selects, said out loud. The
+                              tick is on the weight and not on the skein, so a
+                              second ball of the same weight lights up beside
+                              this one, and a row that named only a colourway
+                              would make that look like a fault. */}
+                          <Text style={[styles.sectionValue, { color: colors.ink2 }]}>
+                            {material.weight.label}
+                          </Text>
+                          <Mark on={selected} />
+                        </Pressable>
+                      </View>
+                    );
+                  })}
+
+                  {needleSizes.map((mm) => {
+                    const selected = needleSizeSelected(draft, mm);
+                    const label = `${formatMm(mm)} mm needles`;
+
+                    return (
+                      <View
+                        key={`needle:${mm}`}
+                        style={[styles.row, { borderBottomColor: colors.hairline }]}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          accessibilityLabel={label}
+                          onPress={() => toggleNeedle(mm)}
+                          style={({ pressed }) => [
+                            styles.rowBody,
+                            styles.rowFlush,
+                            {
+                              backgroundColor: pressed ? colors.surfaceSunk : colors.surface,
+                            },
+                          ]}>
+                          <Text
+                            numberOfLines={1}
+                            style={[
+                              styles.rowLabel,
+                              { color: selected ? colors.ink : colors.ink2 },
+                            ]}>
+                            {label}
+                          </Text>
+                          <Mark on={selected} />
+                        </Pressable>
+                      </View>
+                    );
+                  })}
+                </View>
               </Section>
-            );
-          })}
+            ) : null}
 
-          <Section
-            label="Language"
-            value={tally(draft.languages.length)}
-            expanded={open.includes('languages')}
-            onToggle={() => toggleSection('languages')}>
-            {/* Ravelry's own order: most-published first, so English, French
-                and German are where a thumb lands. Alphabetising it would put
-                Afrikaans above all three. */}
-            <ChipRow
-              options={LANGUAGES}
-              selected={(permalink) => draft.languages.includes(permalink)}
-              onPress={(permalink) => toggle('languages', permalink)}
-            />
-          </Section>
+            <Section
+              label="Sort"
+              value={SORTS.find((sort) => sort.permalink === draft.sort)?.label}
+              expanded={open.includes('sort')}
+              onToggle={() => toggleSection('sort')}>
+              <ChipRow
+                options={SORTS}
+                selected={(permalink) => draft.sort === permalink}
+                onPress={(permalink) =>
+                  // Tapping the chosen sort again gives Ravelry its own default
+                  // back, which is not any of the nine and cannot be chosen.
+                  setDraft((current) =>
+                    setSort(current, current.sort === permalink ? null : permalink),
+                  )
+                }
+              />
+            </Section>
 
-          <Section
-            label="Source"
-            value={tally(draft.sourceTypes.length)}
-            expanded={open.includes('sourceTypes')}
-            onToggle={() => toggleSection('sourceTypes')}>
-            <ChipRow
-              options={SOURCE_TYPES}
-              selected={(permalink) => draft.sourceTypes.includes(permalink)}
-              onPress={(permalink) => toggle('sourceTypes', permalink)}
-            />
-          </Section>
+            <Section
+              label="Craft"
+              value={tally(draft.craft.length)}
+              expanded={open.includes('craft')}
+              onToggle={() => toggleSection('craft')}>
+              <ChipRow
+                options={CRAFTS}
+                selected={(permalink) => draft.craft.includes(permalink)}
+                onPress={(permalink) => toggle('craft', permalink)}
+              />
+            </Section>
 
-          <Section
-            label="Photo"
-            value={PHOTO_OPTIONS.find((option) => option.permalink === draft.photo)?.label}
-            expanded={open.includes('photo')}
-            onToggle={() => toggleSection('photo')}>
-            <ChipRow
-              options={PHOTO_OPTIONS}
-              selected={(permalink) => draft.photo === permalink}
-              onPress={(permalink) =>
-                setDraft((current) =>
-                  setPhoto(current, current.photo === permalink ? null : permalink),
-                )
-              }
-            />
-          </Section>
-        </ScrollView>
+            <Section
+              label="Availability"
+              value={tally(draft.availability.length)}
+              expanded={open.includes('availability')}
+              onToggle={() => toggleSection('availability')}>
+              <ChipRow
+                options={AVAILABILITY}
+                selected={(permalink) => draft.availability.includes(permalink)}
+                onPress={(permalink) => toggle('availability', permalink)}
+              />
+            </Section>
 
-        <View
-          style={[
-            styles.footer,
-            {
-              backgroundColor: colors.paper,
-              borderTopColor: colors.hairline,
-              paddingBottom: space.s4 + insets.bottom,
-            },
-          ]}>
-          <Button variant="primary" size="lg" full onPress={show}>
-            Show patterns
-          </Button>
-        </View>
+            <Section
+              label="Yarn weight"
+              value={tally(draft.weights.length)}
+              expanded={open.includes('weights')}
+              onToggle={() => toggleSection('weights')}>
+              <ChipRow
+                options={YARN_WEIGHTS}
+                selected={(permalink) => draft.weights.includes(permalink)}
+                onPress={(permalink) => toggle('weights', permalink)}
+              />
+            </Section>
+
+            {RANGE_FILTERS.map((filter) => {
+              const key = `range:${filter.key}`;
+              const entry = drafts[filter.key];
+
+              return (
+                <Section
+                  key={key}
+                  label={filter.label}
+                  value={rangeSummary(entry)}
+                  expanded={open.includes(key)}
+                  onToggle={() => toggleSection(key)}>
+                  <View style={styles.range}>
+                    {/* Either end may be left empty, and an empty end is not
+                        zero — it is "as far as Ravelry goes", which is why the
+                        hint says the unit and not the bounds. */}
+                    <View style={styles.rangeEnd}>
+                      <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>Min</Text>
+                      <TextField
+                        value={entry.min}
+                        onChangeText={(text) => editRange(filter.key, 'min', text)}
+                        accessibilityLabel={`Minimum ${filter.label} in ${filter.unit}`}
+                        returnKeyType="done"
+                      />
+                    </View>
+                    <View style={styles.rangeEnd}>
+                      <Text style={[styles.fieldLabel, { color: colors.ink2 }]}>Max</Text>
+                      <TextField
+                        value={entry.max}
+                        onChangeText={(text) => editRange(filter.key, 'max', text)}
+                        accessibilityLabel={`Maximum ${filter.label} in ${filter.unit}`}
+                        returnKeyType="done"
+                      />
+                    </View>
+                  </View>
+                  <Text style={[styles.hint, { color: colors.ink2 }]}>{filter.unit}</Text>
+                </Section>
+              );
+            })}
+
+            <Section
+              label="Category"
+              value={tally(draft.categories.length)}
+              expanded={open.includes('categories')}
+              onToggle={() => toggleSection('categories')}>
+              {/* The rows carry their own hairlines and their own indent, so this
+                  block takes none of the padding the chip rows take. */}
+              <View style={styles.tree}>
+                <CategoryRows
+                  nodes={PATTERN_CATEGORIES}
+                  depth={0}
+                  selected={draft.categories}
+                  opened={branches}
+                  onSelect={(permalink) => toggle('categories', permalink)}
+                  onOpen={toggleBranch}
+                />
+              </View>
+            </Section>
+
+            {ATTRIBUTE_GROUPS.map((group) => {
+              const key = `group:${group.permalink}`;
+
+              return (
+                <Section
+                  key={key}
+                  label={group.label}
+                  value={tally(countGroup(draft, group))}
+                  expanded={open.includes(key)}
+                  onToggle={() => toggleSection(key)}>
+                  {group.options.length === 0 ? null : (
+                    <ChipRow
+                      options={group.options}
+                      selected={(permalink) =>
+                        draft[LIST_FOR[group.param]].includes(permalink)
+                      }
+                      onPress={(permalink) => toggle(LIST_FOR[group.param], permalink)}
+                    />
+                  )}
+
+                  {/* A child group is a label and its own chips, not a section of
+                      its own: it is already behind one disclosure, and putting it
+                      behind a second would hide four sleeve options two taps
+                      deep. Its `param` is read off the child rather than the
+                      parent — Age / Size / Fit goes to `fit`, and nothing else
+                      does. */}
+                  {group.children.map((child) => (
+                    <View key={child.permalink} style={styles.subGroup}>
+                      <Text style={[styles.subLabel, { color: colors.ink2 }]}>
+                        {child.label}
+                      </Text>
+                      <ChipRow
+                        options={child.options}
+                        selected={(permalink) =>
+                          draft[LIST_FOR[child.param]].includes(permalink)
+                        }
+                        onPress={(permalink) => toggle(LIST_FOR[child.param], permalink)}
+                      />
+                    </View>
+                  ))}
+                </Section>
+              );
+            })}
+
+            <Section
+              label="Language"
+              value={tally(draft.languages.length)}
+              expanded={open.includes('languages')}
+              onToggle={() => toggleSection('languages')}>
+              {/* Ravelry's own order: most-published first, so English, French
+                  and German are where a thumb lands. Alphabetising it would put
+                  Afrikaans above all three. */}
+              <ChipRow
+                options={LANGUAGES}
+                selected={(permalink) => draft.languages.includes(permalink)}
+                onPress={(permalink) => toggle('languages', permalink)}
+              />
+            </Section>
+
+            <Section
+              label="Source"
+              value={tally(draft.sourceTypes.length)}
+              expanded={open.includes('sourceTypes')}
+              onToggle={() => toggleSection('sourceTypes')}>
+              <ChipRow
+                options={SOURCE_TYPES}
+                selected={(permalink) => draft.sourceTypes.includes(permalink)}
+                onPress={(permalink) => toggle('sourceTypes', permalink)}
+              />
+            </Section>
+
+            <Section
+              label="Photo"
+              value={PHOTO_OPTIONS.find((option) => option.permalink === draft.photo)?.label}
+              expanded={open.includes('photo')}
+              onToggle={() => toggleSection('photo')}>
+              <ChipRow
+                options={PHOTO_OPTIONS}
+                selected={(permalink) => draft.photo === permalink}
+                onPress={(permalink) =>
+                  setDraft((current) =>
+                    setPhoto(current, current.photo === permalink ? null : permalink),
+                  )
+                }
+              />
+            </Section>
+          </ScrollView>
+
+          <View
+            style={[
+              styles.footer,
+              {
+                backgroundColor: colors.paper,
+                borderTopColor: colors.hairline,
+                paddingBottom: space.s4 + insets.bottom,
+              },
+            ]}>
+            <Button variant="primary" size="lg" full onPress={show}>
+              Show patterns
+            </Button>
+          </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -808,6 +1118,7 @@ export function FilterSheet({
 
 const styles = StyleSheet.create({
   sheet: { flex: 1 },
+  grow: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -851,6 +1162,29 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   body: { paddingBottom: space.s6 },
+  makeableRow: {
+    // `sectionHeader`'s own metrics, down to the hairline: this row sits in the
+    // same column as forty section headers and reads as one of them, and the
+    // 48pt floor means it owes a finger nothing on top — no `hitSlop` bargain
+    // here, unlike the chrome the mode is reached from, where every row is drawn
+    // short. A label that wraps makes the content taller and the row grows.
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.s3,
+    minHeight: tap.min,
+    paddingVertical: space.s2,
+    paddingHorizontal: space.s4,
+    borderBottomWidth: 1,
+  },
+  makeableLabel: {
+    // Takes what the switch leaves and wraps inside it. `fonts.ui` rather than
+    // the header's `uiMedium`: a section label names a place to go and this
+    // names a state, so it is set in the sheet's reading weight.
+    flex: 1,
+    fontFamily: fonts.ui,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -920,6 +1254,12 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui,
     fontSize: type.body.fontSize,
     lineHeight: type.body.lineHeight,
+  },
+  rowFlush: {
+    // A tree row computes its own left inset from its depth; a stash row has no
+    // depth to compute one from, so it takes the plain 16 every other left edge
+    // in this sheet stops at.
+    paddingLeft: space.s4,
   },
   rowDisclosure: {
     width: tap.min,

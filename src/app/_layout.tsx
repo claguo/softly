@@ -1,10 +1,10 @@
 import {
-  Solway_300Light,
-  Solway_400Regular,
-  Solway_500Medium,
-  Solway_700Bold,
-  Solway_800ExtraBold,
-} from '@expo-google-fonts/solway';
+  Geist_400Regular,
+  Geist_500Medium,
+  Geist_600SemiBold,
+  Geist_700Bold,
+  Geist_800ExtraBold,
+} from '@expo-google-fonts/geist';
 import { YujiMai_400Regular } from '@expo-google-fonts/yuji-mai';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
@@ -36,6 +36,12 @@ function SyncBootstrap() {
   const synced = useRef<string | null>(null);
 
   useEffect(() => {
+    if (status === 'signedOut') {
+      // Signing back in as the same person still owes a sync: the account may
+      // have been deleted off this phone in between, and the tables with it.
+      synced.current = null;
+      return;
+    }
     if (status !== 'signedIn' || username === null || synced.current === username) {
       return;
     }
@@ -171,16 +177,16 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
-  // Solway carries every readable/tappable string across its five real weights,
-  // body sitting on the Light cut and the rest stepping up from there; Yuji Mai
-  // is display-only. Nothing renders until every face is resident, so text never
-  // reflows from a system fallback.
+  // Every readable/tappable string rides Geist, across five real weights
+  // with body text on the Regular cut. Yuji Mai is display-only. Nothing renders
+  // until every one of these faces is resident, so no text ever reflows in from
+  // a system fallback.
   const [fontsLoaded, fontError] = useFonts({
-    Solway_300Light,
-    Solway_400Regular,
-    Solway_500Medium,
-    Solway_700Bold,
-    Solway_800ExtraBold,
+    Geist_400Regular,
+    Geist_500Medium,
+    Geist_600SemiBold,
+    Geist_700Bold,
+    Geist_800ExtraBold,
     YujiMai_400Regular,
   });
 

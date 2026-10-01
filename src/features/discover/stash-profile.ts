@@ -44,6 +44,31 @@ const WEIGHT_ALIASES = new Map<string, string>([
 
 export type StashWeight = { readonly permalink: string; readonly label: string };
 
+/**
+ * The two stash statuses that mean the yarn is not there any more.
+ *
+ * `stash.status` holds `stash_status.name` exactly as Ravelry writes it — see
+ * `toStashRow` — and that name is one of the five in `STASH_STATUSES`: In
+ * stash, In progress, All used up, Will trade or sell, Traded/sold/gifted. Two
+ * of those describe a skein that has left: worked through, or handed on. The
+ * other three are all yarn on hand, **Will trade or sell included** — that ball
+ * is still in the basket, still wound, and a knitter who has not found a buyer
+ * yet can absolutely cast on with it tonight.
+ *
+ * Compared lowercased and whole. Anything else — a null status on a row synced
+ * before the column existed, a wording this app has not met, a sixth status
+ * from some later Ravelry — reads as on hand, which leans the same way the
+ * needle span at the top of this file does: an extra material offers one filter
+ * too many, while a missing one quietly takes a skein off the knitter's own
+ * list of what they own, and only the second of those has the screen telling a
+ * person something untrue about their stash.
+ */
+const SPENT_STATUSES: ReadonlySet<string> = new Set(['all used up', 'traded/sold/gifted']);
+
+function isSpent(status: string | null | undefined): boolean {
+  return typeof status === 'string' && SPENT_STATUSES.has(status.trim().toLowerCase());
+}
+
 /** Millimetre bounds outside which a needle row is junk rather than a needle. */
 const MIN_MM = 0.25;
 const MAX_MM = 40;
@@ -78,11 +103,26 @@ export function toWeightPermalink(name: string | null | undefined): string | nul
   return WEIGHT_INDEX.has(canonical) ? canonical : null;
 }
 
-/** The distinct yarn weights sitting in the stash, thinnest first. */
+/**
+ * The distinct yarn weights sitting in the stash, thinnest first.
+ *
+ * Spent rows are left out. The question this profile answers is what could be
+ * cast on tonight without buying anything, and a ball used up in a sweater two
+ * winters ago is not part of that answer — carried in, it would go on offering
+ * worsted patterns to a knitter with no worsted left. It also keeps the sheet's
+ * makeable switch exact: the materials list under that switch skips the same
+ * rows, so "every material ticked" and "the profile is set" stay one fact said
+ * two ways, which is what lets the switch keep reading itself back off the
+ * filters instead of off a flag.
+ */
 export function deriveWeights(rows: readonly StashListRow[]): StashWeight[] {
   const found = new Map<string, { permalink: string; label: string; order: number }>();
 
   for (const row of rows) {
+    if (isSpent(row.status)) {
+      continue;
+    }
+
     const permalink = toWeightPermalink(row.weightName);
     const weight = permalink === null ? undefined : WEIGHT_INDEX.get(permalink);
     if (weight && !found.has(weight.permalink)) {
@@ -93,6 +133,61 @@ export function deriveWeights(rows: readonly StashListRow[]): StashWeight[] {
   return [...found.values()]
     .sort((a, b) => a.order - b.order)
     .map(({ permalink, label }) => ({ permalink, label }));
+}
+
+/** One skein on hand, and the single filter tapping it turns on. */
+export type StashMaterial = {
+  /** The stash row's own id — the React key, and unique per skein. */
+  readonly id: number;
+  /** The stash tab's title rule, so a row here is named what it is named there. */
+  readonly label: string;
+  /** The weight the search can be told about. Every material has one; see below. */
+  readonly weight: StashWeight;
+};
+
+/**
+ * The stash written out one skein at a time, for a list a knitter can tap.
+ *
+ * `deriveWeights` says what the stash *is* — twelve possible values, deduped.
+ * This says what is *in* it, and the difference matters on screen: a person
+ * looking for the yarn they bought last month is looking for its colourway, not
+ * for the word Worsted. So the rows stay per skein and stay in the order the
+ * stash query put them in, which is alphabetical the way the Stash tab reads.
+ *
+ * Deliberately **not** deduplicated by weight. Two balls of worsted are two
+ * rows, and both of them tick when worsted is on — the mark is not "this skein
+ * was chosen", it is the weight filter's state told once per skein that shares
+ * it, which is the same thing every row on this list is doing. Merging them
+ * would leave a knitter hunting for the skein they meant among names it was
+ * silently folded into.
+ *
+ * A row whose weight will not map is dropped rather than listed dead. There is
+ * no filter behind it to turn on — `toWeightPermalink` refuses anything the
+ * search would 500 on — and a row that answers a tap with nothing at all is
+ * worse than a row that is not there.
+ */
+export function deriveMaterials(rows: readonly StashListRow[]): StashMaterial[] {
+  const materials: StashMaterial[] = [];
+
+  for (const row of rows) {
+    if (isSpent(row.status)) {
+      continue;
+    }
+
+    const permalink = toWeightPermalink(row.weightName);
+    const weight = permalink === null ? undefined : WEIGHT_INDEX.get(permalink);
+    if (weight === undefined) {
+      continue;
+    }
+
+    materials.push({
+      id: row.id,
+      label: row.colorway ?? row.yarnName ?? 'Unnamed yarn',
+      weight: { permalink: weight.permalink, label: weight.label },
+    });
+  }
+
+  return materials;
 }
 
 export type NeedleRange = { readonly min: number; readonly max: number };
@@ -112,6 +207,33 @@ export function deriveNeedleRange(rows: readonly NeedleListRow[]): NeedleRange |
   }
 
   return min <= max ? { min, max } : null;
+}
+
+/**
+ * The sizes actually in the drawer, thinnest first and each one said once.
+ *
+ * A knitter owns three 4 mm circulars and one 4 mm straight; the search cares
+ * about none of that, so the four rows are one size here. The same bounds guard
+ * this as guard `deriveNeedleRange`, and for the same reason — a needle filed
+ * without a size, or with a size that is not a needle, is not a size to offer.
+ *
+ * `deriveNeedleRange` is exactly the span of this list: its min is the first of
+ * these and its max the last. That is what makes the sheet's material rows and
+ * its makeable switch agree without either one knowing about the other — tap
+ * every size here and the band that lands is the band the profile writes.
+ */
+export function deriveNeedleSizes(rows: readonly NeedleListRow[]): number[] {
+  const sizes = new Set<number>();
+
+  for (const row of rows) {
+    const mm = row.sizeMm;
+    if (typeof mm !== 'number' || !Number.isFinite(mm) || mm < MIN_MM || mm > MAX_MM) {
+      continue;
+    }
+    sizes.add(mm);
+  }
+
+  return [...sizes].sort((a, b) => a - b);
 }
 
 /** Total yardage on hand, for the stash chip's stamped value. */

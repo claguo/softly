@@ -62,7 +62,9 @@ export function YarnCard({
         pressed && onPress ? { backgroundColor: colors.surfaceSunk } : null,
       ]}
     >
-      <PhotoFrame src={photo} tint={tint} label="yarn" width={72} aspect="1/1" />
+      {/* The needle swatch's 46pt, like the pattern rows' thumbnails: the
+          whole stash drawer keeps one image size and one left edge. */}
+      <PhotoFrame src={photo} tint={tint} label="yarn" width={46} aspect="1/1" />
 
       <View style={styles.body}>
         <Text

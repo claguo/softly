@@ -3,6 +3,8 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
+    "@expo-google-fonts/figtree": "^0.4.1",
+    "@expo-google-fonts/geist": "^0.4.2",
     "@expo-google-fonts/shippori-mincho": "^0.4.1",
     "@expo-google-fonts/solway": "^0.4.1",
     "@expo-google-fonts/yuji-mai": "^0.4.1",

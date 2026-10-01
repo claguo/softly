@@ -975,6 +975,23 @@ export function subscribeToPatternPdfs(listener: () => void): () => void {
   };
 }
 
+/**
+ * Every PDF on the device, folder and all. For `eraseDeviceData`, which empties
+ * `pattern_pdfs` itself — this is the half of that a `delete from` cannot reach.
+ *
+ * Built by hand rather than through `pdfDirectory()`, which would create the
+ * folder in order to delete it.
+ */
+export function deleteAllPatternPdfFiles(): void {
+  const directory = new Directory(Paths.document, PDF_DIRECTORY);
+
+  if (directory.exists) {
+    directory.delete();
+  }
+
+  changed();
+}
+
 /** The store's view of one pattern. Stable between writes; see `snapshots`. */
 export function patternPdfSnapshot(patternId: number): PatternPdfRow | null {
   const cached = snapshots.get(patternId);

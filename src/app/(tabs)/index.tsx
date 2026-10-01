@@ -22,7 +22,7 @@ import { SwipeRow } from "@/components/ui/swipe-row";
 import {
   deleteProject,
   deleteRowCounter,
-  fillProjectPatternPhotos,
+  fillPatternPhotos,
   forgetProjectDetail,
   getRowCounters,
   refreshProjects,
@@ -126,7 +126,7 @@ export default function HomeScreen() {
   // when there is nothing to do. See `pattern-photos.ts`.
   useEffect(() => {
     if (signedIn) {
-      void fillProjectPatternPhotos();
+      void fillPatternPhotos();
     }
   }, [signedIn, projects]);
 

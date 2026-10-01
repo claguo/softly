@@ -1,11 +1,12 @@
 /**
  * What the Discover screen is filtering on, in one place.
  *
- * The rail of chips, the sheet behind it and the stash switch above them are
- * three ways of touching the same value, and this is the value. Nothing here
- * reaches for React, the database or the network: a filter selection is a plain
- * object, `toSearchParams` turns it into the record `usePatternSearch` takes,
- * and `summarize` turns it into the chips that take it apart again.
+ * The rail of chips, the sheet behind it and the stash switch at the top of
+ * that sheet are three ways of touching the same value, and this is the value.
+ * Nothing here reaches for React, the database or the network: a filter
+ * selection is a plain object, `toSearchParams` turns it into the record
+ * `usePatternSearch` takes, and `summarize` turns it into the chips that take
+ * it apart again.
  *
  * Every string in the state is a **Ravelry permalink**, and only ever one this
  * app has watched `/patterns/search.json` answer 200 for. That is not fussiness.
@@ -439,6 +440,68 @@ export function withStashProfile(
 /** The same two keys taken back out. What turning the mode off does. */
 export function withoutStashProfile(state: PatternFilterState): PatternFilterState {
   return setRange(withList(state, 'weights', []), 'needle-size', null);
+}
+
+/**
+ * Whether one needle size is inside the band the filters currently name.
+ *
+ * This is how a needle row in the sheet knows to draw its tick, and it is a
+ * question asked of the draft rather than of anything remembered — the same
+ * bargain `matchesStashProfile` makes one function up. An end left open is open
+ * on that side: a band of "4 mm and up" contains every needle from the 4 up.
+ *
+ * No band set is **false**, for every size. Read literally an absent filter
+ * contains everything, but what it actually means is that the search has not
+ * been told about needles at all, and a list of sizes all showing ticked over a
+ * grid that is not filtered on any of them would be the screen claiming a
+ * narrowing that is not happening.
+ */
+export function needleSizeSelected(state: PatternFilterState, mm: number): boolean {
+  const range = state.ranges['needle-size'];
+
+  if (range === undefined) {
+    return false;
+  }
+
+  return (range.min === null || mm >= range.min) && (range.max === null || mm <= range.max);
+}
+
+/**
+ * One needle size tapped on or off, written back as the band that results.
+ *
+ * The sizes that count as chosen are read off the state rather than held — the
+ * drawer's own sizes, put through `needleSizeSelected` — so this takes the
+ * drawer as a parameter and hands back a whole new band: toggle `mm` in that
+ * set, then span the thinnest of what is left to the thickest. An empty set is
+ * no band at all, which `setRange` already stores as absence.
+ *
+ * The caveat, said plainly rather than papered over: **`needle-size` is a band,
+ * so a size in the middle of one cannot be turned off.** A drawer of 3, 4 and 5
+ * with all three on is `3|5`; tapping the 4 leaves 3 and 5, whose span is
+ * `3|5` again, and the 4 stays ticked because it *is* still inside what the
+ * search is being asked for. That is the endpoint's shape and not a bug to fix
+ * with a hidden set of "really chosen" sizes — see the note at the top of
+ * `stash-profile`. The search has no way to say "any of these", so the row goes
+ * on telling the truth about the filter rather than about the tap.
+ *
+ * A band typed by hand into the Needle size fields is replaced rather than
+ * adjusted, for the same reason: these rows speak in the drawer's sizes, so a
+ * hand-typed 2.75–9 becomes the span of the drawer sizes it happened to cover,
+ * plus or minus the one just tapped.
+ */
+export function toggleNeedleSize(
+  state: PatternFilterState,
+  mm: number,
+  sizes: readonly number[],
+): PatternFilterState {
+  const held = sizes.filter((size) => needleSizeSelected(state, size));
+  const next = held.includes(mm) ? held.filter((size) => size !== mm) : [...held, mm];
+
+  return setRange(
+    state,
+    'needle-size',
+    next.length === 0 ? null : { min: Math.min(...next), max: Math.max(...next) },
+  );
 }
 
 /**

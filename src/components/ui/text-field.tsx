@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, TextInput } from 'react-native';
 
-import { fonts, radius, space, tap, type, useTheme } from '@/theme';
+import { fonts, space, tap, type, useTheme } from '@/theme';
 
 export type TextFieldProps = {
   value: string;
@@ -26,6 +26,15 @@ export type TextFieldProps = {
    */
   keyboardType?: 'default' | 'number-pad';
   /**
+   * Left on everywhere, and turned off for the one kind of field whose
+   * contents are names rather than words — a search over patterns and
+   * designers, where "Malabrigo" and "Westknits" are exactly what a dictionary
+   * would rather they weren't. On iOS `spellCheck` defaults to whatever this
+   * is, so switching it off takes the red underlines with it and there is no
+   * second prop to remember.
+   */
+  autoCorrect?: boolean;
+  /**
    * `'display'` for the one field on a screen that is also that screen's
    * headline — the rest stay `'body'`, which is every field the app had before
    * this existed.
@@ -36,17 +45,17 @@ export type TextFieldProps = {
 /**
  * Writing on paper, body type, boxed in a hairline that grows to hold it.
  *
- * The box is an outline and never a fill — a filled container would be the one
- * solid thing on a screen made of hairlines, but an unfilled square is what
- * the chips and the secondary buttons already are, so the field now matches
- * the controls it has always sat beside. Focus darkens all four sides from
- * `hairline` to `hairlineStrong` rather than colouring them: the palette keeps
- * colour for state, and being typed into is not a state, it is where the
- * knitter is. Glyphs that once sat flush on a rule would now touch an edge, so
- * the row is inset `space.s3` on each side. The caret and the selection take
- * the link colour, not `ink`: the highlight is drawn behind the glyphs, so it
- * has to be a colour they can still be read on top of, and full-strength ink
- * behind ink is a black bar.
+ * The box takes the same `surface` fill the chips carry — the lightest value
+ * in the palette, one step off the paper — so the field lifts away from the
+ * sheet the way the chips beside it do rather than reading as a solid in some
+ * other register. Focus darkens all four sides from `hairline` to
+ * `hairlineStrong` rather than colouring them: the palette keeps colour for
+ * state, and being typed into is not a state, it is where the knitter is.
+ * Glyphs that once sat flush on a rule would now touch an edge, so the row is
+ * inset `space.s3` on each side. The caret and the selection take the link
+ * colour, not `ink`: the highlight is drawn behind the glyphs, so it has to be
+ * a colour they can still be read on top of, and full-strength ink behind ink
+ * is a black bar.
  *
  * A value too long for one line wraps and the box takes another line rather
  * than scrolling the writing off the side, because a colourway or a project
@@ -72,6 +81,7 @@ export function TextField({
   returnKeyType,
   onSubmitEditing,
   keyboardType = 'default',
+  autoCorrect = true,
   size = 'body',
 }: TextFieldProps) {
   const { colors } = useTheme();
@@ -87,6 +97,7 @@ export function TextField({
       returnKeyType={returnKeyType}
       onSubmitEditing={onSubmitEditing}
       keyboardType={keyboardType}
+      autoCorrect={autoCorrect}
       multiline
       submitBehavior="blurAndSubmit"
       onFocus={() => setFocused(true)}
@@ -97,6 +108,7 @@ export function TextField({
         size === 'display' && styles.display,
         {
           color: colors.ink,
+          backgroundColor: colors.surface,
           borderColor: focused ? colors.hairlineStrong : colors.hairline,
         },
       ]}
@@ -122,7 +134,11 @@ const styles = StyleSheet.create({
     paddingVertical: space.s3,
     paddingHorizontal: space.s3,
     borderWidth: 1,
-    borderRadius: radius.sm,
+    // Deliberately not `radius.sm`. That token is 0 and stays 0 — the chips,
+    // the buttons, the badges and the switch are square and are meant to be —
+    // so the rounding a box that is written into wants is written here, on the
+    // one box that wants it.
+    borderRadius: 16,
   },
   display: {
     // The screen-title size in the display face, with the leading opened to 32

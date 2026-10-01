@@ -56,10 +56,16 @@
  * the counter itself, and `adjustRowCounter` and `resetRowCounter` are where
  * it has got to.
  *
+ * `eraseDeviceData` is the end of all of it: every table emptied and every PDF
+ * deleted, which is what Erase Softly data on the Stash tab runs. It is reached
+ * through `useAuth().deleteAccount`, which takes the session first.
+ *
  * Importing this opens the database and runs migrations.
  */
 
 export { db, runMigrations, sqlite } from '@/data/db';
+
+export { eraseDeviceData } from '@/data/erase';
 
 export {
   authedDelete,
@@ -215,7 +221,7 @@ export { fillStashPhotos, rememberYarnPhoto } from '@/data/yarn-photos';
 
 export {
   ensurePatternPhoto,
-  fillProjectPatternPhotos,
+  fillPatternPhotos,
   getPatternPhoto,
 } from '@/data/pattern-photos';
 

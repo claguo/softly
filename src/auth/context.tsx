@@ -15,6 +15,7 @@ import {
   SignedOutError,
   type RavelryUser,
 } from '@/auth/client';
+import { eraseDeviceData } from '@/data/erase';
 
 export type AuthStatus = 'loading' | 'signedOut' | 'signedIn';
 
@@ -29,6 +30,13 @@ export type AuthValue = AuthState & {
   /** Runs the browser round trip. Rejects if it does not complete. */
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
+  /**
+   * Signs out and erases everything this app keeps on the device. Softly has no
+   * account of its own to delete — the account is Ravelry's — so this is the
+   * whole of what there is to remove. Rejects if the erase did not complete;
+   * the session is gone either way.
+   */
+  deleteAccount: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -110,8 +118,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const deleteAccount = useCallback(async () => {
+    try {
+      // The session first: with it gone nothing can start a sync that would
+      // refill the tables behind the erase.
+      await signOutAsync();
+      await eraseDeviceData();
+    } finally {
+      setState(SIGNED_OUT);
+    }
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ ...state, signIn, signOut }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ ...state, signIn, signOut, deleteAccount }}>{children}</AuthContext.Provider>
   );
 }
 
